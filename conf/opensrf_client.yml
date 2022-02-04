@@ -1,0 +1,11 @@
+# vim:et:ts=2:sw=2:
+
+bus_config:
+  host: 127.0.0.1
+  port: 6379
+ #sock: /path/to/unix-socket-file
+
+
+logging:
+    log4rs_config: conf/log4rs.yml
+
