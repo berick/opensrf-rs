@@ -8,7 +8,6 @@ use opensrf::message::Message;
 use opensrf::client::Client;
 use opensrf::client::ClientSession;
 use opensrf::client::ClientRequest;
-use opensrf::classified::JsonWithClass;
 
 use redis;
 use redis::Commands;

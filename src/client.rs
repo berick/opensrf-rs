@@ -17,7 +17,12 @@ use super::session::SessionType;
 
 const CONNECT_TIMEOUT: i32 = 10;
 
-pub struct Client {
+pub trait DataSerializer {
+    fn pack(&self, value: &json::JsonValue) -> json::JsonValue;
+    fn unpack(&self, value: &json::JsonValue) -> json::JsonValue;
+}
+
+pub struct Client<'a> {
     bus: bus::Bus,
 
     sessions: HashMap<String, Session>,
@@ -25,9 +30,11 @@ pub struct Client {
     /// Queue of receieved transport messages that have yet to be
     /// processed by any sessions.
     transport_backlog: Vec<message::TransportMessage>,
+
+    pub serializer: Option<&'a DataSerializer>,
 }
 
-impl Client {
+impl Client<'_> {
 
     pub fn new(bus_config: &BusConfig) -> Result<Self, error::Error> {
 
@@ -37,6 +44,7 @@ impl Client {
             bus: bus,
             sessions: HashMap::new(),
             transport_backlog: Vec::new(),
+            serializer: None,
         })
     }
 
@@ -251,9 +259,19 @@ impl Client {
 
         ses.last_thread_trace += 1;
 
-        let method = Payload::Method(Method::new(method, params));
+        let mut payload;
 
-        let req = Message::new(MessageType::Request, ses.last_thread_trace, method);
+        if let Some(s) = self.serializer {
+            let mut packed_params = Vec::new();
+            for par in params {
+                packed_params.push(s.pack(&par));
+            }
+            payload = Payload::Method(Method::new(method, packed_params));
+        } else {
+            payload = Payload::Method(Method::new(method, params));
+        }
+
+        let req = Message::new(MessageType::Request, ses.last_thread_trace, payload);
 
         // If we're not connected, all requets go to the root service address.
         let remote_addr = match ses.connected {
@@ -380,7 +398,10 @@ impl Client {
 
         if let Payload::Result(resp) = msg.payload() {
             trace!("handle_reply() found response for {}", req);
-            return Ok(Some(resp.content().clone()));
+            match self.serializer {
+                Some(s) => { return Ok(Some(s.unpack(resp.content()))); }
+                None => { return Ok(Some(resp.content().clone())); }
+            }
         };
 
         let ses = self.ses_mut(req.thread());
