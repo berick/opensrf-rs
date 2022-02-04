@@ -247,28 +247,33 @@ impl Client<'_> {
         Ok(())
     }
 
-    pub fn request(
+    pub fn request<T>(
         &mut self,
         client_ses: &ClientSession,
         method: &str,
-        params: Vec<json::JsonValue>
-    ) -> Result<ClientRequest, error::Error> {
+        params: Vec<T>,
+    ) -> Result<ClientRequest, error::Error> where T: Into<json::JsonValue> {
 
         // self.sessions lookup instead of self.get_mut to avoid borrow
         let mut ses = self.sessions.get_mut(client_ses.thread()).unwrap();
 
         ses.last_thread_trace += 1;
 
+        let mut param_vec: Vec<json::JsonValue> = Vec::new();
+        for param in params {
+            param_vec.push(json::from(param));
+        }
+
         let mut payload;
 
         if let Some(s) = self.serializer {
             let mut packed_params = Vec::new();
-            for par in params {
+            for par in param_vec {
                 packed_params.push(s.pack(&par));
             }
             payload = Payload::Method(Method::new(method, packed_params));
         } else {
-            payload = Payload::Method(Method::new(method, params));
+            payload = Payload::Method(Method::new(method, param_vec));
         }
 
         let req = Message::new(MessageType::Request, ses.last_thread_trace, payload);
