@@ -20,7 +20,7 @@ use super::session::SessionType;
 struct WebsocketMessage {
     service: String,
     thread: String,
-    osrf_msg: Message,
+    osrf_msg: Vec<Message>,
 }
 
 impl WebsocketMessage {
@@ -32,17 +32,20 @@ impl WebsocketMessage {
         &self.service
     }
     fn to_json_value(&self) -> JsonValue {
+        let mut arr = JsonValue::new_array();
+        for msg in self.osrf_msg.iter() {
+            arr.push(msg.to_json_value());
+        }
         json::object!{
             service: self.service(),
             thread: self.thread(),
-            osrf_msg: self.osrf_msg.to_json_value().dump(), // XXX body is double encoded
+            osrf_msg: json::from(arr), // XXX body is double encoded
         }
     }
 }
 
 pub struct WebsocketClient {
     uri: String,
-    //client: tungstenite::client,
     client: tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>,
 }
 
@@ -51,6 +54,13 @@ impl WebsocketClient {
 
         let (mut socket, response) =
             tungstenite::connect(Url::parse(uri).unwrap()).expect("Can't connect");
+
+		println!("Connected to the server");
+		println!("Response HTTP code: {}", response.status());
+		println!("Response contains the following headers:");
+		for (ref header, _value) in response.headers() {
+			println!("* {}", header);
+		}
 
         WebsocketClient {
             client: socket,
@@ -63,7 +73,7 @@ impl WebsocketClient {
         let ws_msg = WebsocketMessage {
             service: "open-ils.actor".to_string(),
             thread: util::random_12(),
-            osrf_msg: msg
+            osrf_msg: vec![msg],
         };
 
         let text = ws_msg.to_json_value().dump();
@@ -76,6 +86,8 @@ impl WebsocketClient {
     }
 
     pub fn recv(&mut self) -> Result<Option<JsonValue>, error::Error> {
+
+        trace!("WS::recv()...");
 
         let msg = self.client.read_message().expect("Error reading message");
 

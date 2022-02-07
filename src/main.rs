@@ -18,7 +18,7 @@ fn main() {
     let mut conf = ClientConfig::new();
     conf.load_file("conf/opensrf_client.yml");
 
-    let mut wsclient = WebsocketClient::new("wss://evgstaging.kcls.org:443/osrf-websocket-translator");
+    let mut wsclient = WebsocketClient::new("ws://localhost:7682/");
     let req = Message::new(MessageType::Request, 1,
         Payload::Method(Method::new("opensrf.system.echo", vec![json::from("HOWDY!")])));
 
