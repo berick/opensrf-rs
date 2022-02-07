@@ -66,6 +66,19 @@ impl Session {
         ses
     }
 
+    /// Adds a response to the session backlog so it can
+    /// be recv()'d later.
+    ///
+    /// Ignore responses to unknown requests or those that have
+    /// already been marked complete.
+    pub fn add_to_backlog(&mut self, msg: message::Message) {
+        if let Some(r) = self.requests.get(&msg.thread_trace()) {
+            if !r.complete {
+                self.backlog.push(msg);
+            }
+        }
+    }
+
     pub fn reset(&mut self) {
         self.remote_addr = Some(self.service.to_string());
         self.connected = false;

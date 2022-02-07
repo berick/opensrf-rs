@@ -17,6 +17,8 @@ pub enum Error {
 
     NoSuchThreadError,
 
+    MethodNotFoundError,
+
     /// Only one request may be active within a given session/thread
     /// at a time.
     ActiveRequestError,
@@ -55,6 +57,7 @@ impl fmt::Display for Error {
             BadResponseError => write!(f, "unexpected response received"),
             NoSuchThreadError => write!(f, "attempt to reference unknown session thread"),
             ActiveRequestError => write!(f, "a request is already active for this client session"),
+            MethodNotFoundError => write!(f, "method not found"),
         }
     }
 }

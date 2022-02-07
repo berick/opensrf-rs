@@ -2,6 +2,7 @@ use log::{trace, warn, error};
 use std::collections::HashMap;
 use std::time;
 use std::fmt;
+use json::JsonValue;
 use super::*;
 use super::conf::BusConfig;
 use super::bus::Bus;
@@ -18,8 +19,8 @@ use super::session::SessionType;
 const CONNECT_TIMEOUT: i32 = 10;
 
 pub trait DataSerializer {
-    fn pack(&self, value: &json::JsonValue) -> json::JsonValue;
-    fn unpack(&self, value: &json::JsonValue) -> json::JsonValue;
+    fn pack(&self, value: &JsonValue) -> JsonValue;
+    fn unpack(&self, value: &JsonValue) -> JsonValue;
 }
 
 pub struct Client<'a> {
@@ -60,12 +61,8 @@ impl Client<'_> {
         self.sessions.get_mut(thread).unwrap()
     }
 
-    fn req(&self, req: &ClientRequest) -> &Request {
-        self.ses(req.thread()).requests.get(&req.thread_trace()).unwrap()
-    }
-
-    fn req_mut(&mut self, req: &ClientRequest) -> &mut Request {
-        self.ses_mut(req.thread()).requests.get_mut(&req.thread_trace()).unwrap()
+    fn req_mut(&mut self, req: &ClientRequest) -> Option<&mut Request> {
+        self.ses_mut(req.thread()).requests.get_mut(&req.thread_trace())
     }
 
     pub fn session(&mut self, service: &str) -> ClientSession {
@@ -252,14 +249,14 @@ impl Client<'_> {
         client_ses: &ClientSession,
         method: &str,
         params: Vec<T>,
-    ) -> Result<ClientRequest, error::Error> where T: Into<json::JsonValue> {
+    ) -> Result<ClientRequest, error::Error> where T: Into<JsonValue> {
 
         // self.sessions lookup instead of self.get_mut to avoid borrow
         let mut ses = self.sessions.get_mut(client_ses.thread()).unwrap();
 
         ses.last_thread_trace += 1;
 
-        let mut param_vec: Vec<json::JsonValue> = Vec::new();
+        let mut param_vec: Vec<JsonValue> = Vec::new();
         for param in params {
             param_vec.push(json::from(param));
         }
@@ -301,7 +298,10 @@ impl Client<'_> {
             }
         );
 
-        Ok(ClientRequest::new(client_ses.thread(), ses.last_thread_trace))
+        let mut r = ClientRequest::new(client_ses.thread(), ses.last_thread_trace);
+        r.method = Some(method.to_string());
+
+        Ok(r)
     }
 
     fn recv_from_backlog(
@@ -322,13 +322,33 @@ impl Client<'_> {
         }
     }
 
+    /// Receive up to one response, then mark the request as complete.
+    ///
+    /// Any remaining responses will be discarded.
+    pub fn recv_one(
+        &mut self,
+        req: &ClientRequest,
+        mut timeout: i32
+    ) -> Result<Option<JsonValue>, error::Error> {
+
+        match self.recv(req, timeout)? {
+            Some(resp) => {
+                if let Some(r) = self.req_mut(req) {
+                    r.complete = true;
+                }
+                Ok(Some(resp))
+            },
+            None => Ok(None)
+        }
+    }
+
     pub fn recv(
         &mut self,
         req: &ClientRequest,
         mut timeout: i32
-    ) -> Result<Option<json::JsonValue>, error::Error> {
+    ) -> Result<Option<JsonValue>, error::Error> {
 
-        let mut resp: Result<Option<json::JsonValue>, error::Error> = Ok(None);
+        let mut resp: Result<Option<JsonValue>, error::Error> = Ok(None);
 
         if self.complete(req) { return resp; }
 
@@ -377,14 +397,14 @@ impl Client<'_> {
                 trace!("recv() found a reply for a request {}, stashing",
                     msg.thread_trace());
 
-                self.ses_mut(req.thread()).backlog.push(msg);
+                self.ses_mut(req.thread()).add_to_backlog(msg);
             }
 
             while msg_list.len() > 0 {
                 trace!("recv() adding to session backlog thread_trace={}",
                     msg_list[0].thread_trace());
 
-                self.ses_mut(req.thread()).backlog.push(msg_list.remove(0));
+                self.ses_mut(req.thread()).add_to_backlog(msg_list.remove(0));
             }
 
             if found { break; }
@@ -397,7 +417,7 @@ impl Client<'_> {
         &mut self,
         req: &ClientRequest,
         msg: &message::Message
-    ) -> Result<Option<json::JsonValue>, error::Error> {
+    ) -> Result<Option<JsonValue>, error::Error> {
 
         trace!("handle_reply() {} mtype={}", req, msg.mtype());
 
@@ -421,17 +441,26 @@ impl Client<'_> {
                 MessageStatus::Continue => {}, // TODO
                 MessageStatus::Complete => {
                     trace!("Marking {} as complete", req);
-                    self.req_mut(req).complete = true;
+                    if let Some(r) = self.req_mut(req) {
+                        r.complete = true;
+                    }
                 },
                 MessageStatus::Timeout => {
                     self.ses_mut(req.thread()).reset();
                     warn!("Stateful session ended by server on keepalive timeout");
                     return Err(error::Error::RequestTimeoutError);
                 },
+                MessageStatus::NotFound => {
+                    ses.reset();
+                    if let Some(m) = req.method() {
+                        warn!("Method Not Found: {}", m);
+                    }
+                    return Err(error::Error::MethodNotFoundError);
+                },
                 _ => {
                     ses.reset();
                     warn!("Unexpected response status {}", stat.status());
-                    return Err(error::Error::RequestTimeoutError);
+                    return Err(error::Error::BadResponseError);
                 }
             }
 
@@ -482,21 +511,34 @@ impl fmt::Display for ClientSession {
 pub struct ClientRequest {
     thread: String,
     thread_trace: usize,
+    method: Option<String>,
 }
 
 impl ClientRequest {
+
     pub fn new(thread: &str, thread_trace: usize) -> Self {
         ClientRequest {
             thread_trace,
             thread: thread.to_string(),
+            method: None,
         }
     }
 
     pub fn thread(&self) -> &str {
         &self.thread
     }
+
     pub fn thread_trace(&self) -> usize {
         self.thread_trace
+    }
+
+    /// Track the called method on requests, mainly for debugging.
+    pub fn method(&self) -> Option<&str> {
+        if let Some(ref m) = self.method {
+            Some(&m[0..])
+        } else {
+            None
+        }
     }
 }
 
