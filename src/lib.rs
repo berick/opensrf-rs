@@ -6,6 +6,7 @@ pub mod message;
 mod bus;
 mod session;
 pub mod client;
+pub mod websocket;
 
 #[cfg(test)]
 mod tests;

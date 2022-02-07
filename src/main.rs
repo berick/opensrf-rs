@@ -8,15 +8,29 @@ use opensrf::message::Message;
 use opensrf::client::Client;
 use opensrf::client::ClientSession;
 use opensrf::client::ClientRequest;
+use opensrf::websocket::WebsocketClient;
 
 use redis;
 use redis::Commands;
 use std::{thread, time};
 
 fn main() {
-
     let mut conf = ClientConfig::new();
     conf.load_file("conf/opensrf_client.yml");
+
+    let mut wsclient = WebsocketClient::new("wss://evgstaging.kcls.org:443/osrf-websocket-translator");
+    let req = Message::new(MessageType::Request, 1,
+        Payload::Method(Method::new("opensrf.system.echo", vec![json::from("HOWDY!")])));
+
+    wsclient.send(req).unwrap();
+
+    if let Some(value) = wsclient.recv().unwrap() {
+        println!("WE GOT A {}", value);
+
+    }
+
+
+    /*
 
     let mut client = Client::new(conf.bus_config()).unwrap();
 
@@ -76,6 +90,7 @@ fn main() {
 
     client.disconnect(&ses).unwrap();
     client.cleanup(&ses);
+    */
 }
 
 

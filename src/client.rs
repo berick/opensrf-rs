@@ -273,7 +273,8 @@ impl Client<'_> {
             payload = Payload::Method(Method::new(method, param_vec));
         }
 
-        let req = Message::new(MessageType::Request, ses.last_thread_trace, payload);
+        let req = Message::new(
+            MessageType::Request, ses.last_thread_trace, payload);
 
         // If we're not connected, all requets go to the root service address.
         let remote_addr = match ses.connected {
@@ -446,7 +447,7 @@ impl Client<'_> {
                     }
                 },
                 MessageStatus::Timeout => {
-                    self.ses_mut(req.thread()).reset();
+                    ses.reset();
                     warn!("Stateful session ended by server on keepalive timeout");
                     return Err(error::Error::RequestTimeoutError);
                 },
