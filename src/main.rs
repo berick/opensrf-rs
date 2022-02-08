@@ -19,12 +19,11 @@ fn main() {
     conf.load_file("conf/opensrf_client.yml");
 
     let mut wsclient = WebsocketClient::new("ws://localhost:7682/");
-    let req = Message::new(MessageType::Request, 1,
-        Payload::Method(Method::new("opensrf.system.echo", vec![json::from("HOWDY!")])));
+    let mut ses = wsclient.session("open-ils.actor");
 
-    wsclient.send(req).unwrap();
+    let req = wsclient.request(&ses, "opensrf.system.echo", vec!["HOWDY!", "Neighbor"]);
 
-    if let Some(value) = wsclient.recv().unwrap() {
+    if let Some(value) = wsclient.recv(&ses).unwrap() {
         println!("WE GOT A {}", value);
 
     }

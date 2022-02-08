@@ -533,13 +533,23 @@ impl ClientRequest {
         self.thread_trace
     }
 
+    pub fn method(&self) -> &Option<String> {
+        &self.method
+    }
+
     /// Track the called method on requests, mainly for debugging.
+    /*
     pub fn method(&self) -> Option<&str> {
         if let Some(ref m) = self.method {
             Some(&m[0..])
         } else {
             None
         }
+    }
+    */
+
+    pub fn set_method(&mut self, method: &str) {
+        self.method = Some(method.to_string());
     }
 }
 
