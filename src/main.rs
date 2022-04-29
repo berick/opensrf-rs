@@ -18,6 +18,7 @@ fn main() {
     let mut conf = ClientConfig::new();
     conf.load_file("conf/opensrf_client.yml");
 
+    /*
     let mut wsclient = WebsocketClient::new("ws://localhost:7682/");
     let mut ses = wsclient.session("open-ils.actor");
 
@@ -27,9 +28,9 @@ fn main() {
         println!("WE GOT A {}", value);
 
     }
+    */
 
 
-    /*
 
     let mut client = Client::new(conf.bus_config()).unwrap();
 
@@ -89,7 +90,6 @@ fn main() {
 
     client.disconnect(&ses).unwrap();
     client.cleanup(&ses);
-    */
 }
 
 

@@ -60,7 +60,7 @@ impl Bus {
 
     /// Generates a unique address with a prefix string.
     pub fn new_bus_id(prefix: &str) -> String {
-        String::from(prefix) + "-" + &util::random_12()
+        String::from(prefix) + ":" + &util::random_12()
     }
 
     pub fn bus_id(&self) -> &str {
