@@ -1,5 +1,5 @@
-use rand::Rng;
 use json;
+use rand::Rng;
 
 /// Returns a random 12-char numeric string
 pub fn random_12() -> String {
@@ -16,7 +16,6 @@ pub fn random_16() -> String {
 
 /// Converts a JSON number or string to an isize if possible
 pub fn json_isize(value: &json::JsonValue) -> Option<isize> {
-
     if let Some(i) = value.as_isize() {
         return Some(i);
     } else if let Some(s) = value.as_str() {
@@ -30,7 +29,6 @@ pub fn json_isize(value: &json::JsonValue) -> Option<isize> {
 
 /// Converts a JSON number or string to an usize if possible
 pub fn json_usize(value: &json::JsonValue) -> Option<usize> {
-
     if let Some(i) = value.as_usize() {
         return Some(i);
     } else if let Some(s) = value.as_str() {
@@ -41,5 +39,3 @@ pub fn json_usize(value: &json::JsonValue) -> Option<usize> {
 
     None
 }
-
-

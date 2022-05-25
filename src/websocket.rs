@@ -1,24 +1,18 @@
-use log::{trace, debug, warn, error};
-use std::collections::HashMap;
-use std::time;
-use std::fmt;
-use std::net;
-use json::JsonValue;
-use tungstenite;
-use url::Url;
-use super::util;
+use super::client;
+use super::client::ClientRequest;
+use super::client::ClientSession;
 use super::error;
 use super::message::Message;
 use super::message::MessageType;
-use super::message::MessageStatus;
 use super::message::Method;
 use super::message::Payload;
 use super::session::Request;
 use super::session::Session;
-use super::session::SessionType;
-use super::client;
-use super::client::ClientSession;
-use super::client::ClientRequest;
+use json::JsonValue;
+use log::{debug, trace};
+use std::collections::HashMap;
+use tungstenite;
+use url::Url;
 
 struct WebsocketMessage {
     service: String,
@@ -27,7 +21,6 @@ struct WebsocketMessage {
 }
 
 impl WebsocketMessage {
-
     pub fn thread(&self) -> &str {
         &self.thread
     }
@@ -37,9 +30,9 @@ impl WebsocketMessage {
     fn to_json_value(&self) -> JsonValue {
         let mut arr = JsonValue::new_array();
         for msg in self.osrf_msg.iter() {
-            arr.push(msg.to_json_value());
+            arr.push(msg.to_json_value()).ok();
         }
-        json::object!{
+        json::object! {
             service: self.service(),
             thread: self.thread(),
             osrf_msg: json::from(arr),
@@ -47,7 +40,6 @@ impl WebsocketMessage {
     }
 
     fn from_json_value(service: &str, value: &JsonValue) -> Option<WebsocketMessage> {
-
         let mut msg_vec: Vec<Message> = Vec::new();
 
         match &value["osrf_msg"] {
@@ -56,57 +48,56 @@ impl WebsocketMessage {
                     let msg = Message::from_json_value(&m).unwrap(); // TODO
                     msg_vec.push(msg);
                 }
-            },
-            _ => { return None; } // TODO log
+            }
+            _ => {
+                return None;
+            } // TODO log
         }
 
         let thread = match value["thread"].as_str() {
             Some(t) => t.to_string(),
-            None => { return None; } // TODO log
+            None => {
+                return None;
+            } // TODO log
         };
 
-        Some(
-            WebsocketMessage {
-                thread: thread,
-                service: service.to_string(),
-                osrf_msg: msg_vec,
-            }
-        )
+        Some(WebsocketMessage {
+            thread: thread,
+            service: service.to_string(),
+            osrf_msg: msg_vec,
+        })
     }
 }
 
 pub struct WebsocketClient<'a> {
-    uri: String,
     client: tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>,
     sessions: HashMap<String, Session>,
-    pub serializer: Option<&'a client::DataSerializer>,
+    pub serializer: Option<&'a dyn client::DataSerializer>,
 }
 
 impl WebsocketClient<'_> {
-
     pub fn new(uri: &str) -> Self {
-
-        let (mut socket, response) =
+        let (socket, response) =
             tungstenite::connect(Url::parse(uri).unwrap()).expect("Can't connect");
 
-		debug!("WS connected to server with HTTP code {}", response.status());
+        debug!(
+            "WS connected to server with HTTP code {}",
+            response.status()
+        );
 
-		trace!("Response contains the following headers:");
-		for (ref header, _value) in response.headers() {
-			trace!("* {}", header);
-		}
+        trace!("Response contains the following headers:");
+        for (ref header, _value) in response.headers() {
+            trace!("* {}", header);
+        }
 
         WebsocketClient {
             client: socket,
-            uri: uri.to_string(),
             sessions: HashMap::new(),
             serializer: None,
         }
     }
 
-    pub fn send(&mut self,
-        client_ses: &ClientSession, msg: Message) -> Result<(), error::Error> {
-
+    pub fn send(&mut self, client_ses: &ClientSession, msg: Message) -> Result<(), error::Error> {
         let ses = self.sessions.get(client_ses.thread()).unwrap();
 
         let ws_msg = WebsocketMessage {
@@ -119,13 +110,14 @@ impl WebsocketClient<'_> {
 
         trace!("WS::send() {}", text);
 
-        self.client.write_message(tungstenite::Message::Text(text.into())).unwrap();
+        self.client
+            .write_message(tungstenite::Message::Text(text.into()))
+            .unwrap();
 
         Ok(())
     }
 
     pub fn recv(&mut self, client_ses: &ClientSession) -> Result<Option<JsonValue>, error::Error> {
-
         trace!("WS::recv()...");
 
         let ses = self.sessions.get(client_ses.thread()).unwrap();
@@ -134,14 +126,19 @@ impl WebsocketClient<'_> {
 
         trace!("WS recv() got {}", msg_text);
 
-        let value = match json::parse(msg_text.to_text().unwrap()) { // TODO avoid panic
+        let value = match json::parse(msg_text.to_text().unwrap()) {
+            // TODO avoid panic
             Ok(v) => v,
-            Err(e) => { return Err(error::Error::JsonError(e)); }
+            Err(e) => {
+                return Err(error::Error::JsonError(e));
+            }
         };
 
         let ws_msg = match WebsocketMessage::from_json_value(&ses.service, &value) {
             Some(m) => m,
-            None => { return Err(error::Error::BadResponseError); }
+            None => {
+                return Err(error::Error::BadResponseError);
+            }
         };
 
         trace!("WS recv() {}", ws_msg.osrf_msg[0].to_json_value());
@@ -152,7 +149,6 @@ impl WebsocketClient<'_> {
     }
 
     pub fn session(&mut self, service: &str) -> ClientSession {
-
         let ses = Session::new(service);
         let client_ses = ClientSession::new(&ses.thread);
 
@@ -161,14 +157,15 @@ impl WebsocketClient<'_> {
         client_ses
     }
 
-
     pub fn request<T>(
         &mut self,
         client_ses: &ClientSession,
         method: &str,
         params: Vec<T>,
-    ) -> Result<ClientRequest, error::Error> where T: Into<JsonValue> {
-
+    ) -> Result<ClientRequest, error::Error>
+    where
+        T: Into<JsonValue>,
+    {
         let mut ses = self.sessions.get_mut(client_ses.thread()).unwrap();
 
         ses.last_thread_trace += 1;
@@ -178,7 +175,7 @@ impl WebsocketClient<'_> {
             param_vec.push(json::from(param));
         }
 
-        let mut payload;
+        let payload;
 
         if let Some(s) = self.serializer {
             let mut packed_params = Vec::new();
@@ -190,21 +187,21 @@ impl WebsocketClient<'_> {
             payload = Payload::Method(Method::new(method, param_vec));
         }
 
-        let req = Message::new(
-            MessageType::Request, ses.last_thread_trace, payload);
+        let req = Message::new(MessageType::Request, ses.last_thread_trace, payload);
 
         self.send(client_ses, req)?;
 
-        let mut ses = self.sessions.get_mut(client_ses.thread()).unwrap();
+        let ses = self.sessions.get_mut(client_ses.thread()).unwrap();
 
         trace!("request() adding request to {}", client_ses);
 
-        ses.requests.insert(ses.last_thread_trace,
+        ses.requests.insert(
+            ses.last_thread_trace,
             Request {
                 complete: false,
                 thread: client_ses.thread().to_string(),
                 thread_trace: ses.last_thread_trace,
-            }
+            },
         );
 
         let mut r = ClientRequest::new(client_ses.thread(), ses.last_thread_trace);
@@ -213,6 +210,3 @@ impl WebsocketClient<'_> {
         Ok(r)
     }
 }
-
-
-

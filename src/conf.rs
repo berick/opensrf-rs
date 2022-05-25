@@ -1,10 +1,8 @@
-use std::fs;
-use log::{trace, debug, error};
-use log4rs::append::file::FileAppender;
 use super::error::Error;
+use roxmltree::Document;
+use std::fs;
 use yaml_rust::yaml;
 use yaml_rust::YamlLoader;
-use roxmltree::Document;
 
 #[derive(Debug, Clone)]
 pub struct BusConfig {
@@ -16,7 +14,6 @@ pub struct BusConfig {
 }
 
 impl BusConfig {
-
     pub fn new() -> Self {
         BusConfig {
             host: None,
@@ -58,28 +55,48 @@ enum LogFile {
 
 #[derive(Debug, Clone)]
 enum LogLevel {
-    Error    = 1,
-    Warning  = 2,
-    Info     = 3,
-    Debug    = 4,
+    Error = 1,
+    Warning = 2,
+    Info = 3,
+    Debug = 4,
     Internal = 5,
+}
+
+impl From<&str> for LogLevel {
+    fn from(s: &str) -> Self {
+        if let Ok(num) = s.parse::<usize>() {
+            match num {
+                1 => LogLevel::Error,
+                2 => LogLevel::Warning,
+                3 => LogLevel::Info,
+                4 => LogLevel::Debug,
+                5 => LogLevel::Internal,
+                _ => LogLevel::Warning,
+            }
+        } else {
+            LogLevel::Warning
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct ClientConfig {
     bus_config: BusConfig,
+    privileged: bool,
     log_file: LogFile,
     log_level: LogLevel,
     syslog_facility: Option<String>,
     actlog_facility: Option<String>,
-    settings_file: Option<String>
+
+    /// Path to the opensrf.xml application settings file
+    settings_file: Option<String>,
 }
 
 impl ClientConfig {
-
     pub fn new() -> Self {
         ClientConfig {
             bus_config: BusConfig::new(),
+            privileged: false,
             log_file: LogFile::Syslog,
             log_level: LogLevel::Info,
             syslog_facility: None,
@@ -93,64 +110,102 @@ impl ClientConfig {
     }
 
     // Panics on malformed configuration
-    pub fn load_xml_file(&mut self, config_file: &str, connection_type: &str) -> Result<(), ()> {
-
+    pub fn load_xml_file(&mut self, config_file: &str, connection_type: &str) {
         let xml_text = match fs::read_to_string(config_file) {
             Ok(t) => t,
             Err(e) => panic!(
-                "Error reading configuration file: file='{}' {:?}", config_file, e)
+                "Error reading configuration file: file='{}' {:?}",
+                config_file, e
+            ),
         };
 
         let doc = match Document::parse(&xml_text) {
             Ok(d) => d,
             Err(e) => panic!(
-                "Error reading configuration file: file='{}' {:?}", config_file, e)
+                "Error reading configuration file: file='{}' {:?}",
+                config_file, e
+            ),
         };
 
-        let connections_node = doc.descendants()
+        if let Some(set_file_node) = doc
+            .descendants()
+            .find(|n| n.has_tag_name("settings_config"))
+        {
+            if let Some(set_file) = set_file_node.text() {
+                self.settings_file = Some(String::from(set_file));
+            };
+        };
+
+        let connections_node = doc
+            .descendants()
             .find(|n| n.has_tag_name("connections"))
             .expect("Configuration file missing 'connections' stanza");
 
-        let conn_node = connections_node.descendants()
+        let conn_node = connections_node
+            .descendants()
             .find(|n| n.has_tag_name(connection_type))
-            .expect(&format!("Config file has no configuration for connection type: {}", connection_type));
+            .expect(&format!(
+                "Config file has no configuration for connection type: {}",
+                connection_type
+            ));
 
-        let bus_node = conn_node.descendants()
+        let bus_node = conn_node
+            .descendants()
             .find(|n| n.has_tag_name("message_bus"))
             .expect("Connection stanza has no 'message_bus' section");
 
         if let Some(host) = bus_node.descendants().find(|n| n.has_tag_name("host")) {
-            self.bus_config.set_host(host.text().expect("Invalid host value"));
+            self.bus_config
+                .set_host(host.text().expect("Invalid host value"));
         }
 
         if let Some(port) = bus_node.descendants().find(|n| n.has_tag_name("port")) {
             let p = port.text().expect("Invalid port value");
-            self.bus_config.set_port(p.parse::<u16>().expect("Invalid port value"));
+            self.bus_config
+                .set_port(p.parse::<u16>().expect("Invalid port value"));
         }
 
         if let Some(sock) = bus_node.descendants().find(|n| n.has_tag_name("sock")) {
-            self.bus_config.set_sock(sock.text().expect("Invalid sock value"));
+            self.bus_config
+                .set_sock(sock.text().expect("Invalid sock value"));
         }
 
         if self.bus_config.host().is_none()
             && self.bus_config.port().is_none()
-            && self.bus_config.sock().is_none() {
+            && self.bus_config.sock().is_none()
+        {
             panic!("'host' + 'port' OR 'sock' is required");
         }
 
-        Ok(())
+        for node in conn_node.descendants() {
+            let value = match node.text() {
+                Some(v) => v,
+                None => continue,
+            };
+
+            match node.tag_name().name() {
+                "logfile" => match value {
+                    "syslog" => self.log_file = LogFile::Syslog,
+                    _ => self.log_file = LogFile::File(value.to_string()),
+                },
+                "loglevel" => self.log_level = value.into(),
+                "actlog" => self.actlog_facility = Some(value.to_string()),
+                "syslog" => self.syslog_facility = Some(value.to_string()),
+                "privileged" => self.privileged = "true".eq(value),
+                _ => {}
+            }
+        }
     }
-
-
 
     /// Load configuration from an XML file
     pub fn load_file(&mut self, config_file: &str) -> Result<(), Error> {
-
         let yaml_text = match fs::read_to_string(config_file) {
             Ok(t) => t,
             Err(e) => {
                 eprintln!(
-                    "Error reading configuration file: file='{}' {:?}", config_file, e);
+                    "Error reading configuration file: file='{}' {:?}",
+                    config_file, e
+                );
                 return Err(Error::ClientConfigError);
             }
         };
@@ -160,7 +215,6 @@ impl ClientConfig {
 
     /// Load configuration from an XML string
     pub fn load_string(&mut self, yaml_text: &str) -> Result<(), Error> {
-
         let yaml_docs = match YamlLoader::load_from_str(yaml_text) {
             Ok(docs) => docs,
             Err(e) => {
@@ -178,18 +232,12 @@ impl ClientConfig {
     }
 
     fn set_logging_config(&mut self, yaml: &yaml::Yaml) -> Result<(), Error> {
-
         if let Some(filename) = yaml["logging"]["log4rs_config"].as_str() {
-
-            if let Err(err) =
-                log4rs::init_file(filename, Default::default()) {
-
+            if let Err(err) = log4rs::init_file(filename, Default::default()) {
                 eprintln!("Error loading log4rs config: {}", err);
                 return Err(Error::ClientConfigError);
             }
-
         } else {
-
             eprintln!("No log4rs configuration file set");
             return Err(Error::ClientConfigError);
         };
@@ -198,7 +246,6 @@ impl ClientConfig {
     }
 
     fn set_bus_config(&mut self, yaml: &yaml::Yaml) -> Result<(), Error> {
-
         if let Some(p) = yaml["message_bus"]["port"].as_i64() {
             self.bus_config.set_port(p as u16);
         };
@@ -214,5 +261,3 @@ impl ClientConfig {
         Ok(())
     }
 }
-
-
