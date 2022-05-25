@@ -27,10 +27,12 @@ pub struct Session {
 
     /// Service name.
     ///
-    /// For Clients, this doubles as the remote_addr when initiating
-    /// a new conversation.
     /// For Servers, this is the name of the service we host.
+    /// For Clients, this is the target of our conversation.
     pub service: String,
+
+    /// Bus ID of ouf service
+    pub service_addr: String,
 
     /// Worker-specific bus address for our session.
     /// Only set once we are communicating with a specific worker.
@@ -55,6 +57,7 @@ impl Session {
             service: String::from(service),
             connected: false,
             remote_addr: None,
+            service_addr: String::from("service:") + service,
             last_thread_trace: 0,
             thread: util::random_16(),
             backlog: Vec::new(),
@@ -80,7 +83,7 @@ impl Session {
     }
 
     pub fn reset(&mut self) {
-        self.remote_addr = Some(self.service.to_string());
+        self.remote_addr = None;
         self.connected = false;
     }
 
@@ -88,7 +91,7 @@ impl Session {
         if let Some(ref ra) = self.remote_addr {
             ra
         } else {
-            &self.service
+            &self.service_addr
         }
     }
 

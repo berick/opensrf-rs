@@ -1,6 +1,6 @@
 # vim:et:ts=2:sw=2:
 
-bus_config:
+message_bus:
   host: 127.0.0.1
   port: 6379
  #sock: /path/to/unix-socket-file

@@ -1,22 +1,11 @@
 use opensrf::conf::ClientConfig;
-use opensrf::message::MessageType;
-use opensrf::message::MessageStatus;
-use opensrf::message::TransportMessage;
-use opensrf::message::Payload;
-use opensrf::message::Method;
-use opensrf::message::Message;
 use opensrf::client::Client;
-use opensrf::client::ClientSession;
-use opensrf::client::ClientRequest;
-use opensrf::websocket::WebsocketClient;
-
-use redis;
-use redis::Commands;
-use std::{thread, time};
+//use opensrf::websocket::WebsocketClient;
 
 fn main() {
     let mut conf = ClientConfig::new();
-    conf.load_file("conf/opensrf_client.yml");
+
+    conf.load_file("conf/opensrf_client.yml").expect("Error parsing client config");
 
     /*
     let mut wsclient = WebsocketClient::new("ws://localhost:7682/");
@@ -29,7 +18,6 @@ fn main() {
 
     }
     */
-
 
 
     let mut client = Client::new(conf.bus_config()).unwrap();
