@@ -32,6 +32,9 @@ pub struct Session {
     /// For Servers, this is the name of the service we host.
     pub service: String,
 
+    /// Bus ID for our service.
+    pub service_addr: String,
+
     /// Worker-specific bus address for our session.
     /// Only set once we are communicating with a specific worker.
     pub remote_addr: Option<String>,
@@ -53,8 +56,9 @@ impl Session {
         let ses = Session {
             session_type: SessionType::Client,
             service: String::from(service),
-            connected: false,
+            service_addr: String::from("service:") + service,
             remote_addr: None,
+            connected: false,
             last_thread_trace: 0,
             thread: util::random_16(),
             backlog: Vec::new(),
@@ -85,11 +89,13 @@ impl Session {
     }
 
     pub fn remote_addr(&self) -> &str {
-        if let Some(ref ra) = self.remote_addr {
-            ra
-        } else {
-            &self.service
+        if self.connected {
+            if let Some(ref ra) = self.remote_addr {
+                return ra;
+            }
         }
+
+        &self.service_addr
     }
 
     /// Returns true if the provided request has pending replies
