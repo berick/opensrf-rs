@@ -147,15 +147,15 @@ impl ClientConfig {
 
     fn set_bus_config(&mut self, yaml: &yaml::Yaml) -> Result<(), Error> {
 
-        if let Some(p) = yaml["bus_config"]["port"].as_i64() {
+        if let Some(p) = yaml["message_bus"]["port"].as_i64() {
             self.bus_config.set_port(p as u16);
         };
 
-        if let Some(h) = yaml["bus_config"]["host"].as_str() {
+        if let Some(h) = yaml["message_bus"]["host"].as_str() {
             self.bus_config.set_host(h);
         };
 
-        if let Some(s) = yaml["bus_config"]["sock"].as_str() {
+        if let Some(s) = yaml["message_bus"]["sock"].as_str() {
             self.bus_config.set_sock(s);
         };
 
