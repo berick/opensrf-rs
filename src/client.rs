@@ -274,8 +274,14 @@ impl Client<'_> {
 
         let req = Message::new(MessageType::Request, ses.last_thread_trace, payload);
 
+        // If we're not connected, all requets go to the root service address.
+        let remote_addr = match ses.connected {
+            true => ses.remote_addr(),
+            false => &ses.service,
+        };
+
         let tm = TransportMessage::new_with_body(
-            ses.remote_addr(),
+            remote_addr,
             self.bus.bus_id(),
             client_ses.thread(),
             req,

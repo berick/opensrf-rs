@@ -84,13 +84,11 @@ impl Session {
     }
 
     pub fn remote_addr(&self) -> &str {
-        if self.connected {
-            if let Some(ref ra) = self.remote_addr {
-                return ra;
-            }
+        if let Some(ref ra) = self.remote_addr {
+            ra
+        } else {
+            &self.service_addr
         }
-
-        &self.service_addr
     }
 
     /// Returns true if the provided request has pending replies
