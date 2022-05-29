@@ -4,7 +4,6 @@ use log4rs::append::file::FileAppender;
 use super::error::Error;
 use yaml_rust::yaml;
 use yaml_rust::YamlLoader;
-use roxmltree::Document;
 
 #[derive(Debug, Clone)]
 pub struct BusConfig {
@@ -92,57 +91,6 @@ impl ClientConfig {
         &self.bus_config
     }
 
-    // Panics on malformed configuration
-    pub fn load_xml_file(&mut self, config_file: &str, connection_type: &str) -> Result<(), ()> {
-
-        let xml_text = match fs::read_to_string(config_file) {
-            Ok(t) => t,
-            Err(e) => panic!(
-                "Error reading configuration file: file='{}' {:?}", config_file, e)
-        };
-
-        let doc = match Document::parse(&xml_text) {
-            Ok(d) => d,
-            Err(e) => panic!(
-                "Error reading configuration file: file='{}' {:?}", config_file, e)
-        };
-
-        let connections_node = doc.descendants()
-            .find(|n| n.has_tag_name("connections"))
-            .expect("Configuration file missing 'connections' stanza");
-
-        let conn_node = connections_node.descendants()
-            .find(|n| n.has_tag_name(connection_type))
-            .expect(&format!("Config file has no configuration for connection type: {}", connection_type));
-
-        let bus_node = conn_node.descendants()
-            .find(|n| n.has_tag_name("message_bus"))
-            .expect("Connection stanza has no 'message_bus' section");
-
-        if let Some(host) = bus_node.descendants().find(|n| n.has_tag_name("host")) {
-            self.bus_config.set_host(host.text().expect("Invalid host value"));
-        }
-
-        if let Some(port) = bus_node.descendants().find(|n| n.has_tag_name("port")) {
-            let p = port.text().expect("Invalid port value");
-            self.bus_config.set_port(p.parse::<u16>().expect("Invalid port value"));
-        }
-
-        if let Some(sock) = bus_node.descendants().find(|n| n.has_tag_name("sock")) {
-            self.bus_config.set_sock(sock.text().expect("Invalid sock value"));
-        }
-
-        if self.bus_config.host().is_none()
-            && self.bus_config.port().is_none()
-            && self.bus_config.sock().is_none() {
-            panic!("'host' + 'port' OR 'sock' is required");
-        }
-
-        Ok(())
-    }
-
-
-
     /// Load configuration from an XML file
     pub fn load_file(&mut self, config_file: &str) -> Result<(), Error> {
 
@@ -199,15 +147,15 @@ impl ClientConfig {
 
     fn set_bus_config(&mut self, yaml: &yaml::Yaml) -> Result<(), Error> {
 
-        if let Some(p) = yaml["message_bus"]["port"].as_i64() {
+        if let Some(p) = yaml["bus_config"]["port"].as_i64() {
             self.bus_config.set_port(p as u16);
         };
 
-        if let Some(h) = yaml["message_bus"]["host"].as_str() {
+        if let Some(h) = yaml["bus_config"]["host"].as_str() {
             self.bus_config.set_host(h);
         };
 
-        if let Some(s) = yaml["message_bus"]["sock"].as_str() {
+        if let Some(s) = yaml["bus_config"]["sock"].as_str() {
             self.bus_config.set_sock(s);
         };
 
