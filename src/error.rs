@@ -1,10 +1,11 @@
-use json;
-use redis;
 use std::error;
 use std::fmt;
+use redis;
+use json;
 
 #[derive(Debug)]
 pub enum Error {
+
     /// Invalid configuration file/value
     ClientConfigError,
 
@@ -39,7 +40,7 @@ impl error::Error for Error {
         match *self {
             BusError(ref err) => Some(err),
             JsonError(ref err) => Some(err),
-            _ => None,
+            _ => None
         }
     }
 }
@@ -66,3 +67,6 @@ impl From<redis::RedisError> for Error {
         BusError(inner)
     }
 }
+
+
+

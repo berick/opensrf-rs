@@ -1,11 +1,11 @@
+use json;
+use super::message::TransportMessage;
 use super::message::Message;
 use super::message::MessageType;
 use super::message::Payload;
-use super::message::TransportMessage;
-use json;
 //use super::conf::Config;
-use super::bus::Bus;
 use super::conf::BusConfig;
+use super::bus::Bus;
 
 const TRANSPORT_MSG_JSON: &str = r#"{
     "to":"my-to",
@@ -31,8 +31,10 @@ const TRANSPORT_MSG_JSON: &str = r#"{
     }]
 }"#;
 
+
 #[test]
 fn parse_transport_message() {
+
     let json_value = json::parse(TRANSPORT_MSG_JSON).unwrap();
     let tm = TransportMessage::from_json_value(&json_value).unwrap();
 
@@ -48,3 +50,4 @@ fn parse_transport_message() {
         panic!("Transport message failed to parse as Method");
     }
 }
+

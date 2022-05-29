@@ -9,6 +9,7 @@ pub struct ClassifiedJson {
 }
 
 impl ClassifiedJson {
+
     pub fn json(&self) -> &json::JsonValue {
         &self.json
     }
@@ -21,9 +22,10 @@ impl ClassifiedJson {
     ///
     /// Non-recursive.
     pub fn classify(json: &json::JsonValue, class: &str) -> json::JsonValue {
+
         let mut hash = json::JsonValue::new_object();
-        hash.insert(JSON_CLASS_KEY, class).ok();
-        hash.insert(JSON_PAYLOAD_KEY, json.clone()).ok();
+        hash.insert(JSON_CLASS_KEY, class);
+        hash.insert(JSON_PAYLOAD_KEY, json.clone());
 
         hash
     }
@@ -33,17 +35,22 @@ impl ClassifiedJson {
     ///
     /// Non-recursive.
     pub fn declassify(json: &json::JsonValue) -> Option<ClassifiedJson> {
+
         if json.is_object()
             && json.has_key(JSON_CLASS_KEY)
             && json.has_key(JSON_PAYLOAD_KEY)
-            && json[JSON_CLASS_KEY].is_string()
-        {
-            Some(ClassifiedJson {
-                class: json[JSON_CLASS_KEY].as_str().unwrap().to_string(),
-                json: json[JSON_PAYLOAD_KEY].clone(),
-            })
+            && json[JSON_CLASS_KEY].is_string() {
+
+            Some(
+                ClassifiedJson {
+                    class: json[JSON_CLASS_KEY].as_str().unwrap().to_string(),
+                    json: json[JSON_PAYLOAD_KEY].clone(),
+                }
+            )
         } else {
             None
         }
     }
 }
+
+

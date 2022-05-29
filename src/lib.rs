@@ -1,11 +1,11 @@
-mod bus;
-pub mod classified;
-pub mod client;
-pub mod conf;
 pub mod error;
-pub mod message;
-mod session;
 pub mod util;
+pub mod conf;
+pub mod classified;
+pub mod message;
+mod bus;
+mod session;
+pub mod client;
 pub mod websocket;
 
 #[cfg(test)]
@@ -34,3 +34,5 @@ pub fn init(args: Vec<String>) -> Result<Config, self::error::Error> {
     Ok(config)
 }
 */
+
+
