@@ -1,7 +1,5 @@
-use std::fs;
-use log::{trace, debug, error};
-use log4rs::append::file::FileAppender;
 use super::error::Error;
+use std::fs;
 use yaml_rust::yaml;
 use yaml_rust::YamlLoader;
 
@@ -15,7 +13,6 @@ pub struct BusConfig {
 }
 
 impl BusConfig {
-
     pub fn new() -> Self {
         BusConfig {
             host: None,
@@ -57,10 +54,10 @@ enum LogFile {
 
 #[derive(Debug, Clone)]
 enum LogLevel {
-    Error    = 1,
-    Warning  = 2,
-    Info     = 3,
-    Debug    = 4,
+    Error = 1,
+    Warning = 2,
+    Info = 3,
+    Debug = 4,
     Internal = 5,
 }
 
@@ -71,11 +68,10 @@ pub struct ClientConfig {
     log_level: LogLevel,
     syslog_facility: Option<String>,
     actlog_facility: Option<String>,
-    settings_file: Option<String>
+    settings_file: Option<String>,
 }
 
 impl ClientConfig {
-
     pub fn new() -> Self {
         ClientConfig {
             bus_config: BusConfig::new(),
@@ -93,12 +89,13 @@ impl ClientConfig {
 
     /// Load configuration from an XML file
     pub fn load_file(&mut self, config_file: &str) -> Result<(), Error> {
-
         let yaml_text = match fs::read_to_string(config_file) {
             Ok(t) => t,
             Err(e) => {
                 eprintln!(
-                    "Error reading configuration file: file='{}' {:?}", config_file, e);
+                    "Error reading configuration file: file='{}' {:?}",
+                    config_file, e
+                );
                 return Err(Error::ClientConfigError);
             }
         };
@@ -108,7 +105,6 @@ impl ClientConfig {
 
     /// Load configuration from an XML string
     pub fn load_string(&mut self, yaml_text: &str) -> Result<(), Error> {
-
         let yaml_docs = match YamlLoader::load_from_str(yaml_text) {
             Ok(docs) => docs,
             Err(e) => {
@@ -126,18 +122,12 @@ impl ClientConfig {
     }
 
     fn set_logging_config(&mut self, yaml: &yaml::Yaml) -> Result<(), Error> {
-
         if let Some(filename) = yaml["logging"]["log4rs_config"].as_str() {
-
-            if let Err(err) =
-                log4rs::init_file(filename, Default::default()) {
-
+            if let Err(err) = log4rs::init_file(filename, Default::default()) {
                 eprintln!("Error loading log4rs config: {}", err);
                 return Err(Error::ClientConfigError);
             }
-
         } else {
-
             eprintln!("No log4rs configuration file set");
             return Err(Error::ClientConfigError);
         };
@@ -146,7 +136,6 @@ impl ClientConfig {
     }
 
     fn set_bus_config(&mut self, yaml: &yaml::Yaml) -> Result<(), Error> {
-
         if let Some(p) = yaml["message_bus"]["port"].as_i64() {
             self.bus_config.set_port(p as u16);
         };
@@ -162,5 +151,3 @@ impl ClientConfig {
         Ok(())
     }
 }
-
-

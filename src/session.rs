@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-use std::fmt;
-use log::{trace, warn, error};
 use super::*;
+use log::trace;
+use std::collections::HashMap;
 
 /// Internal, mutable session and request tracking structs
 
@@ -17,7 +16,6 @@ pub enum SessionType {
 }
 
 pub struct Session {
-
     pub session_type: SessionType,
 
     /// Each session is identified on the network by a random thread string.
@@ -50,9 +48,7 @@ pub struct Session {
 }
 
 impl Session {
-
     pub fn new(service: &str) -> Self {
-
         let ses = Session {
             session_type: SessionType::Client,
             service: String::from(service),
@@ -100,7 +96,8 @@ impl Session {
 
     /// Returns true if the provided request has pending replies
     pub fn has_pending_replies(&self, thread_trace: usize) -> bool {
-        self.backlog.iter().any(|r| r.thread_trace() == thread_trace)
+        self.backlog
+            .iter()
+            .any(|r| r.thread_trace() == thread_trace)
     }
 }
-
