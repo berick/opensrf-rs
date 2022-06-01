@@ -12,7 +12,7 @@ pub struct Request {
 
 pub enum SessionType {
     Client,
-    Server,
+    _Server,
 }
 
 pub struct Session {

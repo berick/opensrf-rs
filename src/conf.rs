@@ -71,8 +71,8 @@ pub struct ClientConfig {
     log_level: LogLevel,
     syslog_facility: Option<String>,
     actlog_facility: Option<String>,
-    */
     settings_file: Option<String>,
+    */
 }
 
 impl ClientConfig {
@@ -84,8 +84,8 @@ impl ClientConfig {
             log_level: LogLevel::Info,
             syslog_facility: None,
             actlog_facility: None,
-            */
             settings_file: None,
+            */
         }
     }
 
