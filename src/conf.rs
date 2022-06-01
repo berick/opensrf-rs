@@ -46,6 +46,7 @@ impl BusConfig {
     }
 }
 
+/*
 #[derive(Debug, Clone)]
 enum LogFile {
     Syslog,
@@ -60,14 +61,17 @@ enum LogLevel {
     Debug = 4,
     Internal = 5,
 }
+*/
 
 #[derive(Debug)]
 pub struct ClientConfig {
     bus_config: BusConfig,
+    /*
     log_file: LogFile,
     log_level: LogLevel,
     syslog_facility: Option<String>,
     actlog_facility: Option<String>,
+    */
     settings_file: Option<String>,
 }
 
@@ -75,10 +79,12 @@ impl ClientConfig {
     pub fn new() -> Self {
         ClientConfig {
             bus_config: BusConfig::new(),
+            /*
             log_file: LogFile::Syslog,
             log_level: LogLevel::Info,
             syslog_facility: None,
             actlog_facility: None,
+            */
             settings_file: None,
         }
     }
