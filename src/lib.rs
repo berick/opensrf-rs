@@ -6,7 +6,6 @@ pub mod error;
 pub mod message;
 mod session;
 pub mod util;
-pub mod websocket;
 
 #[cfg(test)]
 mod tests;
