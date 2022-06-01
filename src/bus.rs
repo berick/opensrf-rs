@@ -38,19 +38,34 @@ impl Bus {
     fn connection_uri(bus_config: &BusConfig) -> Result<String, error::Error> {
         let uri: String;
 
+        let mut auth = String::from("");
+        if let Some(username) = bus_config.username() {
+            if let Some(password) = bus_config.password() {
+                auth = format!("{}:{}@", username, password);
+            }
+        }
+
+        if auth.eq("") {
+            return Err(error::Error::ClientConfigError(format!(
+                "Bus username and password required!"
+            )));
+        }
+
         if let Some(ref s) = bus_config.sock() {
-            uri = format!("unix://{}", s);
+            uri = format!("unix://{}{}", auth, s);
         } else {
             if let Some(ref h) = bus_config.host() {
                 if let Some(ref p) = bus_config.port() {
-                    uri = format!("redis://{}:{}/", h, p);
+                    uri = format!("redis://{}{}:{}/", auth, h, p);
                 } else {
-                    error!("Bus requires 'sock' or 'host' + 'port'");
-                    return Err(error::Error::ClientConfigError);
+                    return Err(error::Error::ClientConfigError(format!(
+                        "Bus requires 'sock' or 'host' + 'port'"
+                    )));
                 }
             } else {
-                error!("Bus requires 'sock' or 'host' + 'port'");
-                return Err(error::Error::ClientConfigError);
+                return Err(error::Error::ClientConfigError(format!(
+                    "Bus requires 'sock' or 'host' + 'port'"
+                )));
             }
         };
 

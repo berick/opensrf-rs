@@ -6,7 +6,7 @@ use std::fmt;
 #[derive(Debug)]
 pub enum Error {
     /// Invalid configuration file/value
-    ClientConfigError,
+    ClientConfigError(String),
 
     RequestTimeoutError,
 
@@ -50,7 +50,7 @@ impl fmt::Display for Error {
             BusError(ref err) => err.fmt(f),
             JsonError(ref err) => err.fmt(f),
             InternalApiError(s) => write!(f, "internal api error: {}", s),
-            ClientConfigError => write!(f, "configuration error"),
+            ClientConfigError(ref s) => write!(f, "configuration error: {}", s),
             RequestTimeoutError => write!(f, "request timed out"),
             ConnectTimeoutError => write!(f, "connect timed out"),
             BadResponseError => write!(f, "unexpected response received"),

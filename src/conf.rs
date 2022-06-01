@@ -10,6 +10,9 @@ pub struct BusConfig {
 
     /// Unix Socket path
     sock: Option<String>,
+
+    username: Option<String>,
+    password: Option<String>,
 }
 
 impl BusConfig {
@@ -18,6 +21,8 @@ impl BusConfig {
             host: None,
             port: None,
             sock: None,
+            username: None,
+            password: None,
         }
     }
 
@@ -33,6 +38,14 @@ impl BusConfig {
         &self.sock
     }
 
+    pub fn username(&self) -> &Option<String> {
+        &self.username
+    }
+
+    pub fn password(&self) -> &Option<String> {
+        &self.password
+    }
+
     pub fn set_host(&mut self, host: &str) {
         self.host = Some(String::from(host));
     }
@@ -43,6 +56,14 @@ impl BusConfig {
 
     pub fn set_sock(&mut self, sock: &str) {
         self.sock = Some(String::from(sock));
+    }
+
+    pub fn set_username(&mut self, username: &str) {
+        self.username = Some(String::from(username));
+    }
+
+    pub fn set_password(&mut self, password: &str) {
+        self.password = Some(String::from(password));
     }
 }
 
@@ -98,11 +119,10 @@ impl ClientConfig {
         let yaml_text = match fs::read_to_string(config_file) {
             Ok(t) => t,
             Err(e) => {
-                eprintln!(
+                return Err(Error::ClientConfigError(format!(
                     "Error reading configuration file: file='{}' {:?}",
                     config_file, e
-                );
-                return Err(Error::ClientConfigError);
+                )));
             }
         };
 
@@ -114,8 +134,10 @@ impl ClientConfig {
         let yaml_docs = match YamlLoader::load_from_str(yaml_text) {
             Ok(docs) => docs,
             Err(e) => {
-                eprintln!("Error parsing configuration file: {:?}", e);
-                return Err(Error::ClientConfigError);
+                return Err(Error::ClientConfigError(format!(
+                    "Error parsing configuration file: {:?}",
+                    e
+                )));
             }
         };
 
@@ -131,11 +153,15 @@ impl ClientConfig {
         if let Some(filename) = yaml["logging"]["log4rs_config"].as_str() {
             if let Err(err) = log4rs::init_file(filename, Default::default()) {
                 eprintln!("Error loading log4rs config: {}", err);
-                return Err(Error::ClientConfigError);
+                return Err(Error::ClientConfigError(format!(
+                    "Error loading log4rs config: {}",
+                    err
+                )));
             }
         } else {
-            eprintln!("No log4rs configuration file set");
-            return Err(Error::ClientConfigError);
+            return Err(Error::ClientConfigError(format!(
+                "No log4rs configuration file set"
+            )));
         };
 
         Ok(())
@@ -152,6 +178,14 @@ impl ClientConfig {
 
         if let Some(s) = yaml["message_bus"]["sock"].as_str() {
             self.bus_config.set_sock(s);
+        };
+
+        if let Some(s) = yaml["message_bus"]["username"].as_str() {
+            self.bus_config.set_username(s);
+        };
+
+        if let Some(s) = yaml["message_bus"]["password"].as_str() {
+            self.bus_config.set_password(s);
         };
 
         Ok(())

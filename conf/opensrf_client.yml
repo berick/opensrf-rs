@@ -3,6 +3,8 @@
 message_bus:
   host: 127.0.0.1
   port: 6379
+  username: opensrf@private
+  password: password
  #sock: /path/to/unix-socket-file
 
 
