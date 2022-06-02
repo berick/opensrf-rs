@@ -12,6 +12,5 @@ log4rs = "1.1.1"
 json = "0.12.4"
 roxmltree = "0.14.1"
 redis = "0.21.4"
-url = "2.2.2"
 tungstenite = "0.16.0"
 

@@ -5,8 +5,13 @@ use super::util;
 use log::{debug, error, trace};
 use redis;
 use redis::Commands;
+use redis::ConnectionAddr;
+use redis::ConnectionInfo;
+use redis::RedisConnectionInfo;
 use std::fmt;
 use std::time;
+
+const DEFAULT_REDIS_PORT: u16 = 6379;
 
 /// Manages the Redis connection.
 pub struct Bus {
@@ -16,10 +21,10 @@ pub struct Bus {
 
 impl Bus {
     pub fn new(bus_config: &BusConfig, bus_id: String) -> Result<Self, error::Error> {
-        let uri = Bus::connection_uri(bus_config)?;
-        debug!("Bus::new() connecting to {}", uri);
+        let info = Bus::connection_info(bus_config)?;
+        debug!("Bus::new() connecting to {:?}", info);
 
-        let client = redis::Client::open(uri)?;
+        let client = redis::Client::open(info)?;
 
         let connection = match client.get_connection() {
             Ok(c) => c,
@@ -34,42 +39,53 @@ impl Bus {
         })
     }
 
-    /// Generates the Redis connection URI
-    fn connection_uri(bus_config: &BusConfig) -> Result<String, error::Error> {
-        let uri: String;
+    /// Generates the Redis connection Info
+    fn connection_info(bus_config: &BusConfig) -> Result<ConnectionInfo, error::Error> {
+        // Build the connection info by hand because it gives us more
+        // flexibility/control than compiling a URL string.
 
-        let mut auth = String::from("");
+        // TODO: do we need a way to say username/password are required?
+        // There may be cases where we want to use the default login,
+        // e.g. out-of-band maintenance.
+        let mut redis_con = RedisConnectionInfo {
+            db: 0,
+            username: None,
+            password: None,
+        };
+
         if let Some(username) = bus_config.username() {
+            redis_con.username = Some(String::from(username));
+
             if let Some(password) = bus_config.password() {
-                auth = format!("{}:{}@", username, password);
+                redis_con.password = Some(String::from(password));
             }
         }
 
-        if auth.eq("") {
-            return Err(error::Error::ClientConfigError(format!(
-                "Bus username and password required!"
-            )));
-        }
+        let con_addr: ConnectionAddr;
 
         if let Some(ref s) = bus_config.sock() {
-            uri = format!("unix://{}{}", auth, s);
+            con_addr = ConnectionAddr::Unix(s.into());
         } else {
-            if let Some(ref h) = bus_config.host() {
-                if let Some(ref p) = bus_config.port() {
-                    uri = format!("redis://{}{}:{}/", auth, h, p);
-                } else {
-                    return Err(error::Error::ClientConfigError(format!(
-                        "Bus requires 'sock' or 'host' + 'port'"
-                    )));
+            if let Some(ref host) = bus_config.host() {
+                let mut port = DEFAULT_REDIS_PORT;
+
+                if let Some(p) = bus_config.port() {
+                    port = *p;
                 }
+
+                // NOTE: TcpTls not currently supported
+                con_addr = ConnectionAddr::Tcp(String::from(host), port);
             } else {
                 return Err(error::Error::ClientConfigError(format!(
-                    "Bus requires 'sock' or 'host' + 'port'"
+                    "Host or Unix Sock Info Required"
                 )));
             }
         };
 
-        Ok(uri)
+        Ok(ConnectionInfo {
+            addr: con_addr,
+            redis: redis_con,
+        })
     }
 
     /// Generates a unique address with a prefix string.

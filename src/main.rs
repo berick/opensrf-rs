@@ -4,53 +4,46 @@ use opensrf::conf::ClientConfig;
 
 fn main() {
     let mut conf = ClientConfig::new();
+
     conf.load_file("conf/opensrf_client.yml")
         .expect("Cannot load config file");
 
-    /*
-    let mut wsclient = WebsocketClient::new("ws://localhost:7682/");
-    let mut ses = wsclient.session("open-ils.actor");
-
-    let req = wsclient.request(&ses, "opensrf.system.echo", vec!["HOWDY!", "Neighbor"]);
-
-    if let Some(value) = wsclient.recv(&ses).unwrap() {
-        println!("WE GOT A {}", value);
-
-    }
-    */
-
-    let mut client = Client::new(conf.bus_config()).unwrap();
+    let mut client = Client::new(conf.bus_config()).expect("Could not build client");
 
     let ses = client.session("opensrf.settings");
 
-    client.connect(&ses).unwrap();
+    client.connect(&ses).expect("Could not connect to service");
 
     let params = vec![json::from("Hello"), json::from("World")];
-    let req = client.request(&ses, "opensrf.system.echo", params).unwrap();
+    let params2 = params.clone();
 
-    let params2 = vec![json::from("Hello"), json::from("World")];
+    let req = client
+        .request(&ses, "opensrf.system.echo", params)
+        .expect("Error creating request");
+
     let req2 = client
         .request(&ses, "opensrf.system.echo", params2)
-        .unwrap();
+        .expect("Error creating request");
+
+    // Receive them out of order for testing purposes.
 
     while !client.complete(&req2) {
         match client.recv(&req2, 10).unwrap() {
             Some(value) => println!("REQ2 GOT RESPONSE: {}", value.dump()),
             None => {
-                println!("req2 returned None");
+                println!("Request complete OR timed out");
                 break;
             }
         }
     }
 
-    while !client.complete(&req) {
-        match client.recv(&req, 10).unwrap() {
-            Some(value) => println!("REQ1 GOT RESPONSE: {}", value.dump()),
-            None => {
-                println!("req1 returned None");
-                break;
-            }
-        }
+    println!("Request 2 is complete");
+
+    // A leaner recv() approach that assumes receiving a None, which can
+    // happen with a timeout or a completed request, suffices to continue.
+
+    while let Some(value) = client.recv(&req, 10).expect("recv() Failed") {
+        println!("Request 1 returned: {}", value.dump());
     }
 
     client.disconnect(&ses).unwrap();
