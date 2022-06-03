@@ -22,6 +22,12 @@ pub trait DataSerializer {
     fn unpack(&self, value: &JsonValue) -> JsonValue;
 }
 
+enum UnpackedReply {
+    Value(json::JsonValue),
+    ResetTimeout,
+    Noop,
+}
+
 pub struct Client<'a> {
     bus: bus::Bus,
 
@@ -345,7 +351,7 @@ impl Client<'_> {
     pub fn recv(
         &mut self,
         req: &ClientRequest,
-        mut timeout: i32,
+        timeout: i32,
     ) -> Result<Option<JsonValue>, error::Error> {
         let mut resp: Result<Option<JsonValue>, error::Error> = Ok(None);
 
@@ -358,24 +364,40 @@ impl Client<'_> {
         trace!("recv() called for {}", req);
 
         // Reply for this request was previously pulled from the
-        // bus and tossed into our queue.
-        if let Some(msg) = self.recv_from_backlog(req) {
-            return self.handle_reply(req, &msg);
+        // bus and tossed into our queue.  Go until we find a returnable
+        // response or drain the backlog.
+        loop {
+            if let Some(msg) = self.recv_from_backlog(req) {
+                match self.handle_reply(req, &msg)? {
+                    UnpackedReply::Value(r) => { return Ok(Some(r)); }
+                    // Timeout has not yet been decremented, so there's
+                    // no need to check for ResetTimeout
+                    _ => {
+                        // May have pulled a Complete message from the backlog.
+                        if self.complete(req) {
+                            return resp;
+                        }
+                    }
+                }
+            } else {
+                break;
+            }
         }
 
-        while timeout >= 0 {
+        let mut mut_timeout = timeout;
+        while mut_timeout >= 0 {
             let start = time::SystemTime::now();
 
             // Could return a response to any request that's linked
             // to this session.
-            let tm = match self.recv_session(req.thread(), timeout)? {
+            let tm = match self.recv_session(req.thread(), mut_timeout)? {
                 Some(m) => m,
                 None => {
                     return resp;
                 }
             };
 
-            timeout -= start.elapsed().unwrap().as_secs() as i32;
+            mut_timeout -= start.elapsed().unwrap().as_secs() as i32;
 
             trace!("{}", tm.to_json_value().dump());
 
@@ -390,7 +412,11 @@ impl Client<'_> {
             let mut found = false;
             if msg.thread_trace() == thread_trace {
                 found = true;
-                resp = self.handle_reply(req, &msg);
+                match self.handle_reply(req, &msg)? {
+                    UnpackedReply::Value(r) => resp = Ok(Some(r)),
+                    UnpackedReply::ResetTimeout => mut_timeout = timeout,
+                    _ => {}
+                }
             } else {
                 // Pulled a reply to a request made by this client session
                 // but not matching the requested thread trace.
@@ -425,17 +451,17 @@ impl Client<'_> {
         &mut self,
         req: &ClientRequest,
         msg: &message::Message,
-    ) -> Result<Option<JsonValue>, error::Error> {
+    ) -> Result<UnpackedReply, error::Error> {
         trace!("handle_reply() {} mtype={}", req, msg.mtype());
 
         if let Payload::Result(resp) = msg.payload() {
             trace!("handle_reply() found response for {}", req);
             match self.serializer {
                 Some(s) => {
-                    return Ok(Some(s.unpack(resp.content())));
+                    return Ok(UnpackedReply::Value(s.unpack(resp.content())));
                 }
                 None => {
-                    return Ok(Some(resp.content().clone()));
+                    return Ok(UnpackedReply::Value(resp.content().clone()));
                 }
             }
         };
@@ -448,7 +474,9 @@ impl Client<'_> {
                     trace!("handle_reply() marking {} as connected", req);
                     ses.connected = true;
                 }
-                MessageStatus::Continue => {} // TODO
+                MessageStatus::Continue => {
+                    return Ok(UnpackedReply::ResetTimeout);
+                }
                 MessageStatus::Complete => {
                     trace!("Marking {} as complete", req);
                     if let Some(r) = self.req_mut(req) {
@@ -474,7 +502,7 @@ impl Client<'_> {
                 }
             }
 
-            return Ok(None);
+            return Ok(UnpackedReply::Noop);
         }
 
         error!(
