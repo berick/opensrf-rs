@@ -345,6 +345,19 @@ impl Bus {
 
         Ok(())
     }
+
+    // Rust redis has no disconnect, but calling a method named
+    // disconnect will makes sense.
+    pub fn disconnect(&mut self) -> Result<(), error::Error> {
+
+        // Avoid deleting the stream for service: connections since
+        // those are shared.
+        if self.stream_name()[0..7].eq("client:") {
+            self.delete_stream()?;
+        }
+
+        Ok(())
+    }
 }
 
 impl fmt::Display for Bus {

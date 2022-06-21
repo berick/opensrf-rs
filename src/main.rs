@@ -74,4 +74,5 @@ fn main() {
 
     client.disconnect(&ses).unwrap();
     client.cleanup(&ses);
+    client.disconnect_bus().expect("bus disconnected");
 }

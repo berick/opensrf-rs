@@ -56,6 +56,10 @@ impl Client<'_> {
         self.bus.clear_stream()
     }
 
+    pub fn disconnect_bus(&mut self) -> Result<(), error::Error> {
+        self.bus.disconnect()
+    }
+
     fn ses(&self, thread: &str) -> &Session {
         self.sessions.get(thread).unwrap()
     }
