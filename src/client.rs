@@ -53,7 +53,7 @@ impl Client<'_> {
     }
 
     pub fn clear_bus(&mut self) -> Result<(), error::Error> {
-        self.bus.clear(None)
+        self.bus.clear_stream()
     }
 
     fn ses(&self, thread: &str) -> &Session {

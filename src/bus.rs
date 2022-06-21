@@ -155,10 +155,11 @@ impl Bus {
         );
 
         let bus_id = self.bus_id().to_string(); // XXX
+        let stream_name = self.stream_name().to_string(); // XXX
 
         let mut read_opts = StreamReadOptions::default()
             .count(1)
-            .group(&bus_id, &bus_id);
+            .group(&stream_name, &bus_id);
 
         if timeout != 0 {
             if timeout == -1 { // block indefinitely
@@ -169,7 +170,7 @@ impl Bus {
         }
 
         let reply: StreamReadReply = match self.connection()
-            .xread_options(&[&bus_id], &[">"], &read_opts) {
+            .xread_options(&[&stream_name], &[">"], &read_opts) {
             Ok(r) => r,
             Err(e) => match e.kind() {
                 redis::ErrorKind::TypeError => {
@@ -191,6 +192,12 @@ impl Bus {
 			for StreamId { id, map } in ids {
                 trace!("{} read message ID {}", self, id);
 
+                // TODO do we need this?
+                let acked: Result<(), _> =
+                    self.connection().xack(&stream_name, &stream_name, &[&id]);
+
+                acked.ok(); // ignorable
+
                 if let Some(message) = map.get("message") {
                     if let Value::Data(bytes) = message {
                         if let Ok(s) = String::from_utf8(bytes.to_vec()) {
@@ -206,8 +213,6 @@ impl Bus {
                 };
 			}
 		}
-
-        // TODO ACK
 
         Ok(value_op)
     }
@@ -300,11 +305,26 @@ impl Bus {
 
         trace!("send() writing chunk to={}: {}", recipient, json_str);
 
+        let maxlen = StreamMaxlen::Approx(1000); // TODO CONFIG
 
+        let res: Result<String, _> = self.connection()
+            .xadd_maxlen(recipient, maxlen, "*", &[("message", json_str)]);
 
-        //if let Err(e) = self.connection().xadd(
+        trace!("here 1");
 
-        let res: Result<i32, _> = self.connection().rpush(recipient, json_str);
+        if let Err(e) = res {
+        trace!("here 2");
+            return Err(error::Error::BusError(e));
+        };
+
+        Ok(())
+    }
+
+    pub fn clear_stream(&mut self) -> Result<(), error::Error> {
+
+        let sname = self.stream_name().to_string(); // XXX
+        let maxlen = StreamMaxlen::Equals(0);
+        let res: Result<i32, _> = self.connection().xtrim(&sname, maxlen);
 
         if let Err(e) = res {
             return Err(error::Error::BusError(e));
@@ -313,18 +333,14 @@ impl Bus {
         Ok(())
     }
 
-    /// Clears the value for a key.
-    pub fn clear(&mut self, key_op: Option<&str>) -> Result<(), error::Error> {
-        let key = match key_op {
-            Some(k) => k.to_string(),
-            None => self.bus_id().to_string(), // mut borrow
-        };
+    /// Removes our stream, which also removes our consumer group
+    pub fn delete_stream(&mut self) -> Result<(), error::Error> {
 
-        let res: Result<i32, _> = self.connection().del(&key);
+        let sname = self.stream_name().to_string(); // XXX
+        let res: Result<i32, _> = self.connection().del(&sname);
 
-        match res {
-            Ok(count) => trace!("con.del('{}') returned {}", key, count),
-            Err(e) => return Err(error::Error::BusError(e)),
+        if let Err(e) = res {
+            return Err(error::Error::BusError(e));
         }
 
         Ok(())
