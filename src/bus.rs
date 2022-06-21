@@ -3,11 +3,10 @@ use super::error;
 use super::message::TransportMessage;
 use super::util;
 use log::{debug, error, trace};
-use redis;
-use redis::Commands;
-use redis::ConnectionAddr;
-use redis::ConnectionInfo;
-use redis::RedisConnectionInfo;
+use redis::{
+        Commands, Value, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
+use redis::streams::{
+    StreamId, StreamKey, StreamReadOptions, StreamReadReply, StreamMaxlen};
 use std::fmt;
 use std::time;
 
@@ -16,10 +15,16 @@ const DEFAULT_REDIS_PORT: u16 = 6379;
 /// Manages the Redis connection.
 pub struct Bus {
     connection: redis::Connection,
+
+    /// Our unique identifier on the bus
     bus_id: String,
+
+    /// The stream this connection pulls messages from.
+    stream_name: Option<String>,
 }
 
 impl Bus {
+
     pub fn new(bus_config: &BusConfig, bus_id: String) -> Result<Self, error::Error> {
         let info = Bus::connection_info(bus_config)?;
         debug!("Bus::new() connecting to {:?}", info);
@@ -33,10 +38,46 @@ impl Bus {
             }
         };
 
-        Ok(Bus {
+        let mut bus = Bus {
             bus_id: bus_id,
             connection: connection,
-        })
+            stream_name: None,
+        };
+
+        bus.setup_stream()?;
+
+        Ok(bus)
+    }
+
+    pub fn setup_stream(&mut self) -> Result<(), error::Error> {
+
+        let sname = self.stream_name().to_string();
+
+        debug!("{} setting up stream={} group={}", self, sname, sname);
+
+        let created: Result<(), _> =
+            self.connection().xgroup_create_mkstream(&sname, &sname, "$");
+
+        if let Err(_e) = created {
+            // TODO see about differentiating error types so we can
+            // report real errors.
+            debug!("{} stream group {} already exists", self, sname);
+        }
+
+        Ok(())
+    }
+
+    pub fn stream_name(&self) -> &str {
+        if let Some(s) = &self.stream_name {
+            &s
+        } else {
+            &self.bus_id
+        }
+    }
+
+    /// Called by service-level clients to claim a shared stream name.
+    pub fn set_stream_name(&mut self, name: &str) {
+        self.stream_name = Some(String::from(name));
     }
 
     /// Generates the Redis connection Info
@@ -106,67 +147,69 @@ impl Bus {
     ///
     /// The string will be valid JSON string.
     fn recv_one_chunk(&mut self, timeout: i32) -> Result<Option<String>, error::Error> {
+
         trace!(
             "recv_one_chunk() timeout={} for recipient {}",
             timeout,
             self.bus_id()
         );
 
-        let value: String;
         let bus_id = self.bus_id().to_string(); // XXX
 
-        if timeout == 0 {
-            // non-blocking
-            // LPOP returns only the value
-            value = match self.connection().lpop(bus_id, None) {
-                Ok(c) => c,
-                Err(e) => match e.kind() {
-                    redis::ErrorKind::TypeError => {
-                        // Will read a Nil value on timeout.  That's OK.
-                        return Ok(None);
-                    }
-                    _ => {
-                        return Err(error::Error::BusError(e));
-                    }
-                },
-            };
-        } else {
-            // BLPOP returns the name of the popped list and the value.
-            // This code assumes we're only recv()'ing for a single endpoint,
-            // no wildcard matching on the self.bus_id.
+        let mut read_opts = StreamReadOptions::default()
+            .count(1)
+            .group(&bus_id, &bus_id);
 
-            let resp: Vec<String>;
-
-            if timeout < 0 {
-                // block indefinitely
-
-                resp = match self.connection().blpop(&bus_id, 0) {
-                    Ok(r) => r,
-                    Err(e) => {
-                        return Err(error::Error::BusError(e));
-                    }
-                };
+        if timeout != 0 {
+            if timeout == -1 { // block indefinitely
+                read_opts = read_opts.block(0);
             } else {
-                // block up to timeout seconds
-
-                resp = match self.connection().blpop(&bus_id, timeout as usize) {
-                    Ok(r) => r,
-                    Err(e) => {
-                        return Err(error::Error::BusError(e));
-                    }
-                };
-            };
-
-            if resp.len() == 0 {
-                return Ok(None);
-            } // No message received
-
-            value = resp[1].to_string(); // resp = [key, value]
+                read_opts = read_opts.block(timeout as usize * 1000); // milliseconds
+            }
         }
 
-        trace!("recv_one_value() pulled from bus: {}", value);
+        let reply: StreamReadReply = match self.connection()
+            .xread_options(&[&bus_id], &[">"], &read_opts) {
+            Ok(r) => r,
+            Err(e) => match e.kind() {
+                redis::ErrorKind::TypeError => {
+                    // Will read a Nil value on timeout.  That's OK.
+                    trace!("{} stream read returned nothing", self);
+                    return Ok(None);
+                }
+                _ => {
+                    return Err(error::Error::BusError(e));
+                }
+            }
+        };
 
-        Ok(Some(value))
+        let mut value_op: Option<String> = None;
+
+		for StreamKey { key, ids } in reply.keys {
+			trace!("{} read value from stream {}", self, key);
+
+			for StreamId { id, map } in ids {
+                trace!("{} read message ID {}", self, id);
+
+                if let Some(message) = map.get("message") {
+                    if let Value::Data(bytes) = message {
+                        if let Ok(s) = String::from_utf8(bytes.to_vec()) {
+                            value_op = Some(s);
+                        } else {
+                            error!("{} received unexpected stream data: {:?}", self, message);
+                            return Ok(None);
+                        };
+                    } else {
+                        error!("{} received unexpected stream data", self);
+                        return Ok(None);
+                    }
+                };
+			}
+		}
+
+        // TODO ACK
+
+        Ok(value_op)
     }
 
     /// Returns at most one JSON value pulled from the queue or None if
@@ -256,6 +299,10 @@ impl Bus {
         let json_str = msg.to_json_value().dump();
 
         trace!("send() writing chunk to={}: {}", recipient, json_str);
+
+
+
+        //if let Err(e) = self.connection().xadd(
 
         let res: Result<i32, _> = self.connection().rpush(recipient, json_str);
 
