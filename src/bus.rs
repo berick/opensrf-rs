@@ -2,7 +2,9 @@ use super::conf::BusConfig;
 use super::error;
 use super::message::TransportMessage;
 use super::util;
+use std::process;
 use log::{debug, error, trace};
+use gethostname::gethostname;
 use redis::{
         Commands, Value, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
 use redis::streams::{
@@ -16,17 +18,19 @@ const DEFAULT_REDIS_PORT: u16 = 6379;
 pub struct Bus {
     connection: redis::Connection,
 
-    /// Our unique identifier on the bus
-    bus_id: String,
+    /// Our unique identifier on the message bus
+    address: Option<String>,
 
-    /// The stream this connection pulls messages from.
-    stream_name: Option<String>,
+    /// Where our bus lives.  Could be on another host.
+    domain: String,
 }
 
 impl Bus {
 
-    pub fn new(bus_config: &BusConfig, bus_id: String) -> Result<Self, error::Error> {
+    pub fn new(bus_config: &BusConfig, for_service: Option<&str>) -> Result<Self, error::Error> {
         let info = Bus::connection_info(bus_config)?;
+        let domain = Bus::host_from_connection_info(&info);
+
         debug!("Bus::new() connecting to {:?}", info);
 
         let client = redis::Client::open(info)?;
@@ -39,19 +43,23 @@ impl Bus {
         };
 
         let mut bus = Bus {
-            bus_id: bus_id,
+            domain,
+            address: None,
             connection: connection,
-            stream_name: None,
         };
 
-        bus.setup_stream()?;
+        bus.set_address(for_service);
+        bus.setup_stream(None)?;
 
         Ok(bus)
     }
 
-    pub fn setup_stream(&mut self) -> Result<(), error::Error> {
+    pub fn setup_stream(&mut self, name: Option<&str>) -> Result<(), error::Error> {
 
-        let sname = self.stream_name().to_string();
+        let sname = match name {
+            Some(n) => n.to_string(),
+            None => self.address().to_string()
+        };
 
         debug!("{} setting up stream={} group={}", self, sname, sname);
 
@@ -67,17 +75,11 @@ impl Bus {
         Ok(())
     }
 
-    pub fn stream_name(&self) -> &str {
-        if let Some(s) = &self.stream_name {
-            &s
-        } else {
-            &self.bus_id
+    fn host_from_connection_info(info: &ConnectionInfo) -> String {
+        match info.addr {
+            ConnectionAddr::Tcp(ref host, _port) => host.to_string(),
+            _ => panic!("Tcp only support protocol"),
         }
-    }
-
-    /// Called by service-level clients to claim a shared stream name.
-    pub fn set_stream_name(&mut self, name: &str) {
-        self.stream_name = Some(String::from(name));
     }
 
     /// Generates the Redis connection Info
@@ -104,24 +106,20 @@ impl Bus {
 
         let con_addr: ConnectionAddr;
 
-        if let Some(ref s) = bus_config.sock() {
-            con_addr = ConnectionAddr::Unix(s.into());
-        } else {
-            if let Some(ref host) = bus_config.host() {
-                let mut port = DEFAULT_REDIS_PORT;
+        if let Some(ref host) = bus_config.host() {
+            let mut port = DEFAULT_REDIS_PORT;
 
-                if let Some(p) = bus_config.port() {
-                    port = *p;
-                }
-
-                // NOTE: TcpTls not currently supported
-                con_addr = ConnectionAddr::Tcp(String::from(host), port);
-            } else {
-                return Err(error::Error::ClientConfigError(format!(
-                    "Host or Unix Sock Info Required"
-                )));
+            if let Some(p) = bus_config.port() {
+                port = *p;
             }
-        };
+
+            // NOTE: TcpTls not currently supported
+            con_addr = ConnectionAddr::Tcp(String::from(host), port);
+        } else {
+            return Err(error::Error::ClientConfigError(format!(
+                "Host Info Required"
+            )));
+        }
 
         Ok(ConnectionInfo {
             addr: con_addr,
@@ -130,12 +128,30 @@ impl Bus {
     }
 
     /// Generates a unique address with a prefix string.
-    pub fn new_bus_id(prefix: &str) -> String {
-        String::from(prefix) + ":" + &util::random_12()
+    pub fn set_address(&mut self, service: Option<&str>) {
+
+        let maybe_service = match service {
+            Some(s) => format!("{}:", s),
+            None => String::from("")
+        };
+
+        self.address = Some(
+            format!("opensrf:client:{}:{}:{}{}:{}",
+                self.domain,
+                gethostname().into_string().unwrap(),
+                maybe_service,
+                process::id(),
+                &util::random_number(8)
+            )
+        );
     }
 
-    pub fn bus_id(&self) -> &str {
-        &self.bus_id
+    pub fn address(&self) -> &str {
+        self.address.as_ref().unwrap()
+    }
+
+    pub fn domain(&self) -> &str {
+        &self.domain
     }
 
     fn connection(&mut self) -> &mut redis::Connection {
@@ -146,20 +162,23 @@ impl Bus {
     /// pop times out or is interrupted.
     ///
     /// The string will be valid JSON string.
-    fn recv_one_chunk(&mut self, timeout: i32) -> Result<Option<String>, error::Error> {
+    fn recv_one_chunk(&mut self, timeout: i32, stream: Option<&str>) -> Result<Option<String>, error::Error> {
+
+        let sname = match stream {
+            Some(s) => s.to_string(),
+            None => self.address().to_string(),
+        };
 
         trace!(
             "recv_one_chunk() timeout={} for recipient {}",
             timeout,
-            self.bus_id()
+            sname
         );
-
-        let bus_id = self.bus_id().to_string(); // XXX
-        let stream_name = self.stream_name().to_string(); // XXX
 
         let mut read_opts = StreamReadOptions::default()
             .count(1)
-            .group(&stream_name, &bus_id);
+            .noack()
+            .group(&sname, &sname);
 
         if timeout != 0 {
             if timeout == -1 { // block indefinitely
@@ -170,7 +189,7 @@ impl Bus {
         }
 
         let reply: StreamReadReply = match self.connection()
-            .xread_options(&[&stream_name], &[">"], &read_opts) {
+            .xread_options(&[&sname], &[">"], &read_opts) {
             Ok(r) => r,
             Err(e) => match e.kind() {
                 redis::ErrorKind::TypeError => {
@@ -191,12 +210,6 @@ impl Bus {
 
 			for StreamId { id, map } in ids {
                 trace!("{} read message ID {}", self, id);
-
-                // TODO do we need this?
-                let acked: Result<(), _> =
-                    self.connection().xack(&stream_name, &stream_name, &[&id]);
-
-                acked.ok(); // ignorable
 
                 if let Some(message) = map.get("message") {
                     if let Value::Data(bytes) = message {
@@ -219,8 +232,10 @@ impl Bus {
 
     /// Returns at most one JSON value pulled from the queue or None if
     /// the list pop times out or the pop is interrupted by a signal.
-    fn recv_one_value(&mut self, timeout: i32) -> Result<Option<json::JsonValue>, error::Error> {
-        let json_string = match self.recv_one_chunk(timeout)? {
+    fn recv_one_value(&mut self, timeout: i32,
+        stream: Option<&str>) -> Result<Option<json::JsonValue>, error::Error> {
+
+        let json_string = match self.recv_one_chunk(timeout, stream)? {
             Some(s) => s,
             None => {
                 return Ok(None);
@@ -250,16 +265,17 @@ impl Bus {
     pub fn recv_json_value(
         &mut self,
         timeout: i32,
+        stream: Option<&str>,
     ) -> Result<Option<json::JsonValue>, error::Error> {
         let mut option: Option<json::JsonValue>;
 
         if timeout == 0 {
             // See if any data is ready now
-            return self.recv_one_value(timeout);
+            return self.recv_one_value(timeout, stream);
         } else if timeout < 0 {
             // Keep trying until we have a result.
             loop {
-                option = self.recv_one_value(timeout)?;
+                option = self.recv_one_value(timeout, stream)?;
                 if let Some(_) = option {
                     return Ok(option);
                 }
@@ -273,7 +289,7 @@ impl Bus {
         while seconds > 0 {
             let now = time::SystemTime::now();
 
-            option = self.recv_one_value(timeout)?;
+            option = self.recv_one_value(timeout, stream)?;
 
             match option {
                 None => {
@@ -290,8 +306,10 @@ impl Bus {
         Ok(None)
     }
 
-    pub fn recv(&mut self, timeout: i32) -> Result<Option<TransportMessage>, error::Error> {
-        let json_op = self.recv_json_value(timeout)?;
+    pub fn recv(&mut self, timeout: i32,
+        stream: Option<&str>) -> Result<Option<TransportMessage>, error::Error> {
+
+        let json_op = self.recv_json_value(timeout, stream)?;
 
         match json_op {
             Some(ref jv) => Ok(TransportMessage::from_json_value(jv)),
@@ -299,6 +317,7 @@ impl Bus {
         }
     }
 
+    /// Sends a TransportMessage to the "to" value in the message.
     pub fn send(&mut self, msg: &TransportMessage) -> Result<(), error::Error> {
         let recipient = msg.to();
         let json_str = msg.to_json_value().dump();
@@ -310,10 +329,7 @@ impl Bus {
         let res: Result<String, _> = self.connection()
             .xadd_maxlen(recipient, maxlen, "*", &[("message", json_str)]);
 
-        trace!("here 1");
-
         if let Err(e) = res {
-        trace!("here 2");
             return Err(error::Error::BusError(e));
         };
 
@@ -322,7 +338,7 @@ impl Bus {
 
     pub fn clear_stream(&mut self) -> Result<(), error::Error> {
 
-        let sname = self.stream_name().to_string(); // XXX
+        let sname = self.address().to_string(); // XXX
         let maxlen = StreamMaxlen::Equals(0);
         let res: Result<i32, _> = self.connection().xtrim(&sname, maxlen);
 
@@ -336,7 +352,7 @@ impl Bus {
     /// Removes our stream, which also removes our consumer group
     pub fn delete_stream(&mut self) -> Result<(), error::Error> {
 
-        let sname = self.stream_name().to_string(); // XXX
+        let sname = self.address().to_string(); // XXX
         let res: Result<i32, _> = self.connection().del(&sname);
 
         if let Err(e) = res {
@@ -350,9 +366,9 @@ impl Bus {
     // disconnect will makes sense.
     pub fn disconnect(&mut self) -> Result<(), error::Error> {
 
-        // Avoid deleting the stream for service: connections since
-        // those are shared.
-        if self.stream_name()[0..7].eq("client:") {
+        // Avoid deleting the stream for opensrf:service: connections
+        // since those are shared.
+        if self.address()[0..15].eq("opensrf:client:") {
             self.delete_stream()?;
         }
 
@@ -362,6 +378,6 @@ impl Bus {
 
 impl fmt::Display for Bus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Bus {}", self.bus_id())
+        write!(f, "Bus {}", self.address())
     }
 }

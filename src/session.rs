@@ -52,7 +52,7 @@ impl Session {
         let ses = Session {
             session_type: SessionType::Client,
             service: String::from(service),
-            service_addr: String::from("service:") + service,
+            service_addr: String::from("opensrf:service:") + service,
             remote_addr: None,
             connected: false,
             last_thread_trace: 0,

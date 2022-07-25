@@ -33,6 +33,11 @@ pub struct Client<'a> {
 
     sessions: HashMap<String, Session>,
 
+    /// Contains a value if this client is working on behalf of a
+    /// running service.  Otherwise, it's assume to be a standalon
+    /// OpenSRF client.
+    for_service: Option<String>,
+
     /// Queue of receieved transport messages that have yet to be
     /// processed by any sessions.
     transport_backlog: Vec<message::TransportMessage>,
@@ -42,13 +47,23 @@ pub struct Client<'a> {
 
 impl Client<'_> {
     pub fn new(bus_config: &BusConfig) -> Result<Self, error::Error> {
-        let bus = Bus::new(bus_config, Bus::new_bus_id("client"))?;
+        let bus = Bus::new(bus_config, None)?;
+        Client::new_common(bus)
+    }
 
+    pub fn new_for_service(
+        bus_config: &BusConfig, service: &str) -> Result<Self, error::Error> {
+        let mut bus = Bus::new(bus_config, Some(service))?;
+        Client::new_common(bus)
+    }
+
+    fn new_common(bus: Bus) -> Result<Self, error::Error> {
         Ok(Client {
             bus: bus,
             sessions: HashMap::new(),
             transport_backlog: Vec::new(),
             serializer: None,
+            for_service: None,
         })
     }
 
@@ -112,7 +127,7 @@ impl Client<'_> {
         loop {
             let start = time::SystemTime::now();
 
-            let recv_op = self.bus.recv(timeout)?;
+            let recv_op = self.bus.recv(timeout, None)?;
 
             if timeout > 0 {
                 timeout -= start.elapsed().unwrap().as_secs() as i32;
@@ -197,7 +212,7 @@ impl Client<'_> {
 
         let tm = TransportMessage::new_with_body(
             &remote_addr,
-            self.bus.bus_id(),
+            self.bus.address(),
             client_ses.thread(),
             msg,
         );
@@ -241,7 +256,7 @@ impl Client<'_> {
 
         let tm = TransportMessage::new_with_body(
             &ses.remote_addr(),
-            self.bus.bus_id(),
+            self.bus.address(),
             client_ses.thread(),
             msg,
         );
@@ -289,7 +304,7 @@ impl Client<'_> {
 
         let tm = TransportMessage::new_with_body(
             ses.remote_addr(),
-            self.bus.bus_id(),
+            self.bus.address(),
             client_ses.thread(),
             req,
         );

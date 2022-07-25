@@ -8,9 +8,6 @@ pub struct BusConfig {
     host: Option<String>,
     port: Option<u16>,
 
-    /// Unix Socket path
-    sock: Option<String>,
-
     username: Option<String>,
     password: Option<String>,
 }
@@ -20,7 +17,6 @@ impl BusConfig {
         BusConfig {
             host: None,
             port: None,
-            sock: None,
             username: None,
             password: None,
         }
@@ -32,10 +28,6 @@ impl BusConfig {
 
     pub fn port(&self) -> &Option<u16> {
         &self.port
-    }
-
-    pub fn sock(&self) -> &Option<String> {
-        &self.sock
     }
 
     pub fn username(&self) -> &Option<String> {
@@ -52,10 +44,6 @@ impl BusConfig {
 
     pub fn set_port(&mut self, port: u16) {
         self.port = Some(port);
-    }
-
-    pub fn set_sock(&mut self, sock: &str) {
-        self.sock = Some(String::from(sock));
     }
 
     pub fn set_username(&mut self, username: &str) {
@@ -174,10 +162,6 @@ impl ClientConfig {
 
         if let Some(h) = yaml["message_bus"]["host"].as_str() {
             self.bus_config.set_host(h);
-        };
-
-        if let Some(s) = yaml["message_bus"]["sock"].as_str() {
-            self.bus_config.set_sock(s);
         };
 
         if let Some(s) = yaml["message_bus"]["username"].as_str() {

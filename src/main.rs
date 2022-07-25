@@ -49,13 +49,13 @@ fn main() {
     client.disconnect(&ses).unwrap();
     client.cleanup(&ses);
 
-    let ses = client.session("open-ils.cstore");
+    let ses = client.session("open-ils.storage");
 
     client.connect(&ses).unwrap();
 
     let params = vec![json::from(1)];
     let req = client
-        .request(&ses, "open-ils.cstore.direct.actor.user.retrieve", params)
+        .request(&ses, "open-ils.storage.direct.actor.user.retrieve", params)
         .unwrap();
 
     while !client.complete(&req) {
