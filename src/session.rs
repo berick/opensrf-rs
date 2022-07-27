@@ -39,6 +39,8 @@ pub struct Session {
 
     /// Each new Request within a Session gets a new thread_trace.
     /// Replies have the same thread_trace as their request.
+    ///
+    /// This is effectively a request ID.
     pub last_thread_trace: usize,
 
     /// Backlog of unprocessed messages received for this session.
@@ -56,7 +58,7 @@ impl Session {
             remote_addr: None,
             connected: false,
             last_thread_trace: 0,
-            thread: util::random_16(),
+            thread: util::random_number(16),
             backlog: Vec::new(),
             requests: HashMap::new(),
         };

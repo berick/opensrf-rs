@@ -102,7 +102,7 @@ impl ClientConfig {
         &self.bus_config
     }
 
-    /// Load configuration from an XML file
+    /// Load configuration from a YAML file
     pub fn load_file(&mut self, config_file: &str) -> Result<(), Error> {
         let yaml_text = match fs::read_to_string(config_file) {
             Ok(t) => t,
@@ -117,7 +117,7 @@ impl ClientConfig {
         self.load_string(&yaml_text)
     }
 
-    /// Load configuration from an XML string
+    /// Load configuration from a YAML string
     pub fn load_string(&mut self, yaml_text: &str) -> Result<(), Error> {
         let yaml_docs = match YamlLoader::load_from_str(yaml_text) {
             Ok(docs) => docs,

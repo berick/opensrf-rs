@@ -34,7 +34,7 @@ pub struct Client<'a> {
     sessions: HashMap<String, Session>,
 
     /// Contains a value if this client is working on behalf of a
-    /// running service.  Otherwise, it's assume to be a standalon
+    /// running service.  Otherwise, it's assume to be a standalone
     /// OpenSRF client.
     for_service: Option<String>,
 
@@ -51,9 +51,8 @@ impl Client<'_> {
         Client::new_common(bus)
     }
 
-    pub fn new_for_service(
-        bus_config: &BusConfig, service: &str) -> Result<Self, error::Error> {
-        let mut bus = Bus::new(bus_config, Some(service))?;
+    pub fn new_for_service(bus_config: &BusConfig, service: &str) -> Result<Self, error::Error> {
+        let bus = Bus::new(bus_config, Some(service))?;
         Client::new_common(bus)
     }
 
@@ -89,6 +88,7 @@ impl Client<'_> {
             .get_mut(&req.thread_trace())
     }
 
+    /// Create a new client session for the requested service.
     pub fn session(&mut self, service: &str) -> ClientSession {
         let ses = Session::new(service);
         let client_ses = ClientSession::new(&ses.thread);
@@ -180,10 +180,15 @@ impl Client<'_> {
         Ok(Some(tm))
     }
 
+    /// Remove session data from the local cache.
+    ///
+    /// This is required when completing a session to avoid unbound
+    /// memory consumption over time.
     pub fn cleanup(&mut self, client_ses: &ClientSession) {
         self.sessions.remove(client_ses.thread());
     }
 
+    /// Establish a connected session with a remote service.
     pub fn connect(&mut self, client_ses: &ClientSession) -> Result<(), error::Error> {
         trace!("Connecting {}", client_ses);
 
@@ -241,9 +246,14 @@ impl Client<'_> {
         Err(error::Error::ConnectTimeoutError)
     }
 
+    /// Disconnect a connected session.
     pub fn disconnect(&mut self, client_ses: &ClientSession) -> Result<(), error::Error> {
+        if !self.ses(client_ses.thread()).connected {
+            return Ok(());
+        }
+
         // Disconnects need a thread trace, but no request ID, since
-        // we do not track them internally -- they produce no response.
+        // we do not track them internally.  IOW, they produce no response.
         self.ses_mut(client_ses.thread()).last_thread_trace += 1;
 
         let ses = self.ses(client_ses.thread());
@@ -269,6 +279,7 @@ impl Client<'_> {
         Ok(())
     }
 
+    /// Send a request message to the remote service.
     pub fn request<T>(
         &mut self,
         client_ses: &ClientSession,
@@ -278,7 +289,6 @@ impl Client<'_> {
     where
         T: Into<JsonValue>,
     {
-        // self.sessions lookup instead of self.get_mut to avoid borrow
         let mut ses = self.sessions.get_mut(client_ses.thread()).unwrap();
 
         ses.last_thread_trace += 1;
@@ -367,6 +377,12 @@ impl Client<'_> {
         }
     }
 
+    /// Receive the next response to the provided ClientRequest.
+    ///
+    /// # Arguments
+    ///
+    /// * `timeout` - Max time to wait for a response.  A value of -1 means
+    ///   block indefinitely.
     pub fn recv(
         &mut self,
         req: &ClientRequest,
@@ -388,7 +404,9 @@ impl Client<'_> {
         loop {
             if let Some(msg) = self.recv_from_backlog(req) {
                 match self.handle_reply(req, &msg)? {
-                    UnpackedReply::Value(r) => { return Ok(Some(r)); }
+                    UnpackedReply::Value(r) => {
+                        return Ok(Some(r));
+                    }
                     // Timeout has not yet been decremented, so there's
                     // no need to check for ResetTimeout
                     _ => {
@@ -448,6 +466,9 @@ impl Client<'_> {
                 self.ses_mut(req.thread()).add_to_backlog(msg);
             }
 
+            // A recv() that pulls data from bus can return multiple
+            // responses.  This method only returns 1.  Put any
+            // remainders in the backlog for later receiving.
             while msg_list.len() > 0 {
                 trace!(
                     "recv() adding to session backlog thread_trace={}",
@@ -466,6 +487,7 @@ impl Client<'_> {
         return resp;
     }
 
+    /// Unpack and process a response message.
     fn handle_reply(
         &mut self,
         req: &ClientRequest,
@@ -535,6 +557,8 @@ impl Client<'_> {
         return Err(error::Error::BadResponseError);
     }
 
+    /// Returns true if the provided request is marked as complete
+    /// and has no more messages in the backlog of replies.
     pub fn complete(&self, req: &ClientRequest) -> bool {
         let ses = self.ses(req.thread());
         match ses.requests.get(&req.thread_trace()) {
@@ -568,6 +592,7 @@ impl fmt::Display for ClientSession {
     }
 }
 
+/// API request for sending to a remote service.
 pub struct ClientRequest {
     thread: String,
     thread_trace: usize,
@@ -594,17 +619,6 @@ impl ClientRequest {
     pub fn method(&self) -> &Option<String> {
         &self.method
     }
-
-    /// Track the called method on requests, mainly for debugging.
-    /*
-    pub fn method(&self) -> Option<&str> {
-        if let Some(ref m) = self.method {
-            Some(&m[0..])
-        } else {
-            None
-        }
-    }
-    */
 
     pub fn set_method(&mut self, method: &str) {
         self.method = Some(method.to_string());

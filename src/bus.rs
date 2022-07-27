@@ -2,14 +2,12 @@ use super::conf::BusConfig;
 use super::error;
 use super::message::TransportMessage;
 use super::util;
-use std::process;
-use log::{debug, error, trace};
 use gethostname::gethostname;
-use redis::{
-        Commands, Value, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
-use redis::streams::{
-    StreamId, StreamKey, StreamReadOptions, StreamReadReply, StreamMaxlen};
+use log::{debug, error, trace};
+use redis::streams::{StreamId, StreamKey, StreamMaxlen, StreamReadOptions, StreamReadReply};
+use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo, Value};
 use std::fmt;
+use std::process;
 use std::time;
 
 const DEFAULT_REDIS_PORT: u16 = 6379;
@@ -26,7 +24,6 @@ pub struct Bus {
 }
 
 impl Bus {
-
     pub fn new(bus_config: &BusConfig, for_service: Option<&str>) -> Result<Self, error::Error> {
         let info = Bus::connection_info(bus_config)?;
         let domain = Bus::host_from_connection_info(&info);
@@ -55,16 +52,16 @@ impl Bus {
     }
 
     pub fn setup_stream(&mut self, name: Option<&str>) -> Result<(), error::Error> {
-
         let sname = match name {
             Some(n) => n.to_string(),
-            None => self.address().to_string()
+            None => self.address().to_string(),
         };
 
         debug!("{} setting up stream={} group={}", self, sname, sname);
 
-        let created: Result<(), _> =
-            self.connection().xgroup_create_mkstream(&sname, &sname, "$");
+        let created: Result<(), _> = self
+            .connection()
+            .xgroup_create_mkstream(&sname, &sname, "$");
 
         if let Err(_e) = created {
             // TODO see about differentiating error types so we can
@@ -113,7 +110,6 @@ impl Bus {
                 port = *p;
             }
 
-            // NOTE: TcpTls not currently supported
             con_addr = ConnectionAddr::Tcp(String::from(host), port);
         } else {
             return Err(error::Error::ClientConfigError(format!(
@@ -127,23 +123,21 @@ impl Bus {
         })
     }
 
-    /// Generates a unique address with a prefix string.
+    /// Generates a unique address for this bus instance.
     pub fn set_address(&mut self, service: Option<&str>) {
-
         let maybe_service = match service {
             Some(s) => format!("{}:", s),
-            None => String::from("")
+            None => String::from(""),
         };
 
-        self.address = Some(
-            format!("opensrf:client:{}:{}:{}{}:{}",
-                self.domain,
-                gethostname().into_string().unwrap(),
-                maybe_service,
-                process::id(),
-                &util::random_number(8)
-            )
-        );
+        self.address = Some(format!(
+            "opensrf:client:{}:{}:{}{}:{}",
+            self.domain,
+            gethostname().into_string().unwrap(),
+            maybe_service,
+            process::id(),
+            &util::random_number(8)
+        ));
     }
 
     pub fn address(&self) -> &str {
@@ -162,8 +156,11 @@ impl Bus {
     /// pop times out or is interrupted.
     ///
     /// The string will be valid JSON string.
-    fn recv_one_chunk(&mut self, timeout: i32, stream: Option<&str>) -> Result<Option<String>, error::Error> {
-
+    fn recv_one_chunk(
+        &mut self,
+        timeout: i32,
+        stream: Option<&str>,
+    ) -> Result<Option<String>, error::Error> {
         let sname = match stream {
             Some(s) => s.to_string(),
             None => self.address().to_string(),
@@ -181,34 +178,38 @@ impl Bus {
             .group(&sname, &sname);
 
         if timeout != 0 {
-            if timeout == -1 { // block indefinitely
+            if timeout == -1 {
+                // block indefinitely
                 read_opts = read_opts.block(0);
             } else {
                 read_opts = read_opts.block(timeout as usize * 1000); // milliseconds
             }
         }
 
-        let reply: StreamReadReply = match self.connection()
-            .xread_options(&[&sname], &[">"], &read_opts) {
-            Ok(r) => r,
-            Err(e) => match e.kind() {
-                redis::ErrorKind::TypeError => {
-                    // Will read a Nil value on timeout.  That's OK.
-                    trace!("{} stream read returned nothing", self);
-                    return Ok(None);
-                }
-                _ => {
-                    return Err(error::Error::BusError(e));
-                }
-            }
-        };
+        let reply: StreamReadReply =
+            match self
+                .connection()
+                .xread_options(&[&sname], &[">"], &read_opts)
+            {
+                Ok(r) => r,
+                Err(e) => match e.kind() {
+                    redis::ErrorKind::TypeError => {
+                        // Will read a Nil value on timeout.  That's OK.
+                        trace!("{} stream read returned nothing", self);
+                        return Ok(None);
+                    }
+                    _ => {
+                        return Err(error::Error::BusError(e));
+                    }
+                },
+            };
 
         let mut value_op: Option<String> = None;
 
-		for StreamKey { key, ids } in reply.keys {
-			trace!("{} read value from stream {}", self, key);
+        for StreamKey { key, ids } in reply.keys {
+            trace!("{} read value from stream {}", self, key);
 
-			for StreamId { id, map } in ids {
+            for StreamId { id, map } in ids {
                 trace!("{} read message ID {}", self, id);
 
                 if let Some(message) = map.get("message") {
@@ -224,17 +225,19 @@ impl Bus {
                         return Ok(None);
                     }
                 };
-			}
-		}
+            }
+        }
 
         Ok(value_op)
     }
 
     /// Returns at most one JSON value pulled from the queue or None if
     /// the list pop times out or the pop is interrupted by a signal.
-    fn recv_one_value(&mut self, timeout: i32,
-        stream: Option<&str>) -> Result<Option<json::JsonValue>, error::Error> {
-
+    fn recv_one_value(
+        &mut self,
+        timeout: i32,
+        stream: Option<&str>,
+    ) -> Result<Option<json::JsonValue>, error::Error> {
         let json_string = match self.recv_one_chunk(timeout, stream)? {
             Some(s) => s,
             None => {
@@ -306,9 +309,11 @@ impl Bus {
         Ok(None)
     }
 
-    pub fn recv(&mut self, timeout: i32,
-        stream: Option<&str>) -> Result<Option<TransportMessage>, error::Error> {
-
+    pub fn recv(
+        &mut self,
+        timeout: i32,
+        stream: Option<&str>,
+    ) -> Result<Option<TransportMessage>, error::Error> {
         let json_op = self.recv_json_value(timeout, stream)?;
 
         match json_op {
@@ -326,8 +331,9 @@ impl Bus {
 
         let maxlen = StreamMaxlen::Approx(1000); // TODO CONFIG
 
-        let res: Result<String, _> = self.connection()
-            .xadd_maxlen(recipient, maxlen, "*", &[("message", json_str)]);
+        let res: Result<String, _> =
+            self.connection()
+                .xadd_maxlen(recipient, maxlen, "*", &[("message", json_str)]);
 
         if let Err(e) = res {
             return Err(error::Error::BusError(e));
@@ -337,7 +343,6 @@ impl Bus {
     }
 
     pub fn clear_stream(&mut self) -> Result<(), error::Error> {
-
         let sname = self.address().to_string(); // XXX
         let maxlen = StreamMaxlen::Equals(0);
         let res: Result<i32, _> = self.connection().xtrim(&sname, maxlen);
@@ -351,7 +356,6 @@ impl Bus {
 
     /// Removes our stream, which also removes our consumer group
     pub fn delete_stream(&mut self) -> Result<(), error::Error> {
-
         let sname = self.address().to_string(); // XXX
         let res: Result<i32, _> = self.connection().del(&sname);
 
@@ -365,7 +369,6 @@ impl Bus {
     // Rust redis has no disconnect, but calling a method named
     // disconnect will makes sense.
     pub fn disconnect(&mut self) -> Result<(), error::Error> {
-
         // Avoid deleting the stream for opensrf:service: connections
         // since those are shared.
         if self.address()[0..15].eq("opensrf:client:") {
