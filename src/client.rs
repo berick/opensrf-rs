@@ -1,5 +1,5 @@
 use super::bus::Bus;
-use super::conf::BusConfig;
+use super::conf::{BusConfig, ClientConfig};
 use super::message::Message;
 use super::message::MessageStatus;
 use super::message::MessageType;
@@ -31,6 +31,8 @@ enum UnpackedReply {
 pub struct Client<'a> {
     bus: bus::Bus,
 
+    config: ClientConfig,
+
     sessions: HashMap<String, Session>,
 
     /// Contains a value if this client is working on behalf of a
@@ -46,18 +48,20 @@ pub struct Client<'a> {
 }
 
 impl Client<'_> {
-    pub fn new(bus_config: &BusConfig) -> Result<Self, error::Error> {
-        let bus = Bus::new(bus_config, None)?;
-        Client::new_common(bus)
+
+    pub fn new(config: ClientConfig) -> Result<Self, error::Error> {
+        let bus = Bus::new(config.bus_config(), None)?;
+        Client::new_common(config, bus)
     }
 
-    pub fn new_for_service(bus_config: &BusConfig, service: &str) -> Result<Self, error::Error> {
-        let bus = Bus::new(bus_config, Some(service))?;
-        Client::new_common(bus)
+    pub fn new_for_service(config: ClientConfig, service: &str) -> Result<Self, error::Error> {
+        let bus = Bus::new(config.bus_config(), Some(service))?;
+        Client::new_common(config, bus)
     }
 
-    fn new_common(bus: Bus) -> Result<Self, error::Error> {
+    fn new_common(config: ClientConfig, bus: Bus) -> Result<Self, error::Error> {
         Ok(Client {
+            config,
             bus: bus,
             sessions: HashMap::new(),
             transport_backlog: Vec::new(),

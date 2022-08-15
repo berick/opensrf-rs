@@ -24,7 +24,10 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(bus_config: &BusConfig, for_service: Option<&str>) -> Result<Self, error::Error> {
+
+    pub fn new(bus_config: &BusConfig,
+        for_service: Option<&str>) -> Result<Self, error::Error> {
+
         let info = Bus::connection_info(bus_config)?;
         let domain = Bus::host_from_connection_info(&info);
 
@@ -161,6 +164,7 @@ impl Bus {
         timeout: i32,
         stream: Option<&str>,
     ) -> Result<Option<String>, error::Error> {
+
         let sname = match stream {
             Some(s) => s.to_string(),
             None => self.address().to_string(),
@@ -178,7 +182,7 @@ impl Bus {
             .group(&sname, &sname);
 
         if timeout != 0 {
-            if timeout == -1 {
+            if timeout < 0 {
                 // block indefinitely
                 read_opts = read_opts.block(0);
             } else {
@@ -238,6 +242,7 @@ impl Bus {
         timeout: i32,
         stream: Option<&str>,
     ) -> Result<Option<json::JsonValue>, error::Error> {
+
         let json_string = match self.recv_one_chunk(timeout, stream)? {
             Some(s) => s,
             None => {
