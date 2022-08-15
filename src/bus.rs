@@ -106,17 +106,17 @@ impl Bus {
 
         let con_addr: ConnectionAddr;
 
-        if let Some(ref host) = bus_config.host() {
+        if let Some(ref domain) = bus_config.domain() {
             let mut port = DEFAULT_REDIS_PORT;
 
             if let Some(p) = bus_config.port() {
                 port = *p;
             }
 
-            con_addr = ConnectionAddr::Tcp(String::from(host), port);
+            con_addr = ConnectionAddr::Tcp(String::from(domain), port);
         } else {
             return Err(error::Error::ClientConfigError(format!(
-                "Host Info Required"
+                "Domain Info Required"
             )));
         }
 

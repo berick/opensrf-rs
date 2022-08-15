@@ -5,7 +5,7 @@ use yaml_rust::YamlLoader;
 
 #[derive(Debug, Clone)]
 pub struct BusConfig {
-    host: Option<String>,
+    domain: Option<String>,
     port: Option<u16>,
 
     username: Option<String>,
@@ -15,15 +15,15 @@ pub struct BusConfig {
 impl BusConfig {
     pub fn new() -> Self {
         BusConfig {
-            host: None,
+            domain: None,
             port: None,
             username: None,
             password: None,
         }
     }
 
-    pub fn host(&self) -> &Option<String> {
-        &self.host
+    pub fn domain(&self) -> &Option<String> {
+        &self.domain
     }
 
     pub fn port(&self) -> &Option<u16> {
@@ -38,8 +38,8 @@ impl BusConfig {
         &self.password
     }
 
-    pub fn set_host(&mut self, host: &str) {
-        self.host = Some(String::from(host));
+    pub fn set_domain(&mut self, domain: &str) {
+        self.domain = Some(String::from(domain));
     }
 
     pub fn set_port(&mut self, port: u16) {
@@ -160,8 +160,8 @@ impl ClientConfig {
             self.bus_config.set_port(p as u16);
         };
 
-        if let Some(h) = yaml["message_bus"]["host"].as_str() {
-            self.bus_config.set_host(h);
+        if let Some(h) = yaml["message_bus"]["domain"].as_str() {
+            self.bus_config.set_domain(h);
         };
 
         if let Some(s) = yaml["message_bus"]["username"].as_str() {
