@@ -11,6 +11,7 @@ use super::util;
 /// opensrf:service:$service
 /// opensrf:client:$domain:$hostname:$pid:$random
 /// opensrf:router:$domain
+#[derive(Debug, Clone)]
 pub struct BusAddress {
 
     /// Full raw address string
@@ -68,6 +69,24 @@ impl BusAddress {
             is_client: true,
             is_service: false,
             is_router: false,
+        }
+    }
+
+    /// Create a new bus address for a router.
+    pub fn new_for_router(domain: &str) -> Self {
+
+        let namespace = String::from("opensrf"); // only supported option
+
+        let full = format!("{}:router:{}", &namespace, &domain);
+
+        BusAddress {
+            full,
+            namespace,
+            domain: Some(domain.to_string()),
+            service: None,
+            is_client: false,
+            is_service: false,
+            is_router: true,
         }
     }
 

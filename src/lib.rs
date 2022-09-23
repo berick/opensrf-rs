@@ -1,5 +1,5 @@
-mod addr;
-mod bus;
+pub mod addr;
+pub mod bus;
 pub mod classified;
 pub mod client;
 pub mod conf;
