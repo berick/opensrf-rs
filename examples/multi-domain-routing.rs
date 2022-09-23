@@ -28,14 +28,28 @@ fn main() {
 
     let mut pub_bus = Bus::new(&conf, Some(PUBLIC_SERVICE)).unwrap();
 
-    // Register with the private router
-
+    // Register private service with the private router
     let mut tmsg = TransportMessage::new(PRIVATE_ROUTER, pvt_bus.address().full(), "router-thread");
     tmsg.set_router_command("register");
     tmsg.set_router_class(PRIVATE_SERVICE);
 
     pvt_bus.send(&tmsg).unwrap();
 
+    // Register private service with the public router
+    let mut tmsg = TransportMessage::new(PUBLIC_ROUTER, pvt_bus.address().full(), "router-thread");
+    tmsg.set_router_command("register");
+    tmsg.set_router_class(PRIVATE_SERVICE);
+
+    pvt_bus.send(&tmsg).unwrap();
+
+    // Register private service with the public router
+    /*
+    let mut tmsg = TransportMessage::new(PUBLIC_ROUTER, pvt_bus.address().full(), "router-thread");
+    tmsg.set_router_command("register");
+    tmsg.set_router_class(PRIVATE_SERVICE);
+
+    pvt_bus.send(&tmsg).unwrap();
+    */
 }
 
 

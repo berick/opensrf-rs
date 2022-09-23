@@ -1,4 +1,5 @@
 use super::bus::Bus;
+use super::addr::BusAddress;
 use super::conf::{BusConfig, ClientConfig};
 use super::message::Message;
 use super::message::MessageStatus;
@@ -30,6 +31,8 @@ enum UnpackedReply {
 
 pub struct Client<'a> {
     bus: bus::Bus,
+
+    remote_bus_map: HashMap<String, bus::Bus>,
 
     config: ClientConfig,
 
@@ -65,6 +68,7 @@ impl Client<'_> {
             bus: bus,
             sessions: HashMap::new(),
             transport_backlog: Vec::new(),
+            remote_bus_map: HashMap::new(),
             serializer: None,
             for_service: None,
         })
@@ -570,6 +574,24 @@ impl Client<'_> {
             None => false,
         }
     }
+
+    pub fn send_router_command(&mut self, domain: &str, rtr_command: &str, rtr_class: &str) -> Result<(), error::Error> {
+
+        let addr = BusAddress::new_for_router(domain);
+
+        // Always use the address of our primary Bus
+        let mut tmsg = TransportMessage::new(
+            addr.full(), self.bus.address().full(), &util::random_number(16));
+
+        tmsg.set_router_command(rtr_command);
+        tmsg.set_router_class(rtr_class);
+
+        // TODO use the bus that matches the requested domain
+        self.bus.send(&tmsg)
+
+        // TODO should we expect a response from the router?
+    }
+
 }
 
 // Immutable context structs the caller owns for managing

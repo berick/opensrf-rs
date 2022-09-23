@@ -8,6 +8,7 @@ use opensrf::addr::BusAddress;
 use opensrf::bus::Bus;
 use opensrf::conf::BusConfig;
 use opensrf::conf::ClientConfig;
+use std::thread;
 
 const DEFAULT_REDIS_PORT: u16 = 6379;
 
@@ -673,16 +674,36 @@ fn main() {
 
     conf.load_file("conf/opensrf_client.yml").unwrap();
 
-    let mut router: Router = Router::new(
-        "private.localhost",
-        "opensrf@private",
-        "password",
-        6379
-    );
+    let t1 = thread::spawn(|| {
 
-    router.init().expect("Router init");
+        let mut router: Router = Router::new(
+            "private.localhost",
+            "opensrf@private",
+            "password",
+            6379
+        );
 
-    router.listen();
+        router.init().expect("Router init");
+
+        router.listen();
+    });
+
+    let t2 = thread::spawn(|| {
+
+        let mut router: Router = Router::new(
+            "public.localhost",
+            "opensrf@private",
+            "password",
+            6379
+        );
+
+        router.init().expect("Router init");
+
+        router.listen();
+    });
+
+    t1.join();
+    t2.join();
 
     /*
     router.handle_register(
@@ -706,7 +727,7 @@ fn main() {
     ).expect("UnRegister OK");
     */
 
-    println!("{}", router.to_json_value().dump());
+    //println!("{}", router.to_json_value().dump());
 }
 
 
