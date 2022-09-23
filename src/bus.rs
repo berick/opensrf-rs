@@ -135,7 +135,7 @@ impl Bus {
         &self.domain
     }
 
-    fn connection(&mut self) -> &mut redis::Connection {
+    pub fn connection(&mut self) -> &mut redis::Connection {
         &mut self.connection
     }
 
@@ -313,7 +313,12 @@ impl Bus {
 
     /// Sends a TransportMessage to the "to" value in the message.
     pub fn send(&mut self, msg: &TransportMessage) -> Result<(), error::Error> {
-        let recipient = msg.to();
+        self.send_to(msg, msg.to())
+    }
+
+    /// Sends a TransportMessage to the specified BusAddress, regardless
+    /// of what value is in the msg.to() field.
+    pub fn send_to(&mut self, msg: &TransportMessage, recipient: &str) -> Result<(), error::Error> {
         let json_str = msg.to_json_value().dump();
 
         trace!("send() writing chunk to={}: {}", recipient, json_str);

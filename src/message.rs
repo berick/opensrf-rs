@@ -171,6 +171,8 @@ pub struct TransportMessage {
     from: String,
     thread: String,
     osrf_xid: String,
+    router_command: Option<String>,
+    router_class: Option<String>,
     body: Vec<Message>,
 }
 
@@ -181,6 +183,8 @@ impl TransportMessage {
             from: from.to_string(),
             thread: thread.to_string(),
             osrf_xid: String::from(""),
+            router_command: None,
+            router_class: None,
             body: Vec::new(),
         }
     }
@@ -219,6 +223,22 @@ impl TransportMessage {
         self.osrf_xid = xid.to_string()
     }
 
+    pub fn router_command(&self) -> Option<&str> {
+        self.router_command.as_deref()
+    }
+
+    pub fn set_router_command(&mut self, command: &str) {
+        self.router_command = Some(command.to_string());
+    }
+
+    pub fn router_class(&self) -> Option<&str> {
+        self.router_class.as_deref()
+    }
+
+    pub fn set_router_class(&mut self, class: &str) {
+        self.router_class = Some(class.to_string());
+    }
+
     pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
         let to = match json_obj["to"].as_str() {
             Some(i) => i,
@@ -247,6 +267,14 @@ impl TransportMessage {
             tmsg.set_osrf_xid(xid);
         };
 
+        if let Some(rc) = json_obj["router_command"].as_str() {
+            tmsg.set_router_command(rc);
+        }
+
+        if let Some(rc) = json_obj["router_class"].as_str() {
+            tmsg.set_router_class(rc);
+        }
+
         if let json::JsonValue::Array(ref arr) = json_obj["body"] {
             for body in arr {
                 if let Some(b) = Message::from_json_value(&body) {
@@ -267,12 +295,22 @@ impl TransportMessage {
             body_arr.push(body.to_json_value()).ok();
         }
 
-        json::object! {
+        let mut obj = json::object! {
             to: json::from(self.to.clone()),
             from: json::from(self.from.clone()),
             thread: json::from(self.thread.clone()),
             body: body_arr,
+        };
+
+        if let Some(rc) = self.router_command() {
+            obj["router_command"] = json::from(rc);
         }
+
+        if let Some(rc) = self.router_class() {
+            obj["router_class"] = json::from(rc);
+        }
+
+        obj
     }
 }
 

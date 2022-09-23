@@ -7,7 +7,6 @@ use yaml_rust::YamlLoader;
 pub struct BusConfig {
     domain: Option<String>,
     port: Option<u16>,
-
     username: Option<String>,
     password: Option<String>,
 }

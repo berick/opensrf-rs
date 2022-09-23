@@ -157,7 +157,7 @@ impl BusAddress {
         self.is_service
     }
     pub fn is_router(&self) -> bool {
-        self.is_service
+        self.is_router
     }
 }
 

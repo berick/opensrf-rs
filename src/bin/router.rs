@@ -5,6 +5,9 @@ use chrono::prelude::{DateTime, Local};
 use redis::streams::{StreamId, StreamKey, StreamMaxlen, StreamReadOptions, StreamReadReply};
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo, Value};
 use opensrf::addr::BusAddress;
+use opensrf::bus::Bus;
+use opensrf::conf::BusConfig;
+use opensrf::conf::ClientConfig;
 
 const DEFAULT_REDIS_PORT: u16 = 6379;
 
@@ -83,11 +86,11 @@ struct RouterDomain {
     // e.g. public.localhost
     domain: String,
 
-    /// Connection to the Redis instance for this domain.
+    /// Bus connection to the redis instance for this domain.
     ///
     /// A connection is only opened when needed.  Once opened, it's left
     /// open until the connection is shut down on the remote end.
-    connection: Option<redis::Connection>,
+    bus: Option<Bus>,
 
     /// How many requests have been routed to this domain.
     ///
@@ -105,13 +108,14 @@ impl RouterDomain {
         &self.domain
     }
 
-    fn connection(&self) -> Option<&redis::Connection> {
-        self.connection.as_ref()
+    fn bus(&self) -> Option<&Bus> {
+        self.bus.as_ref()
     }
 
-    fn connection_mut(&mut self) -> Option<&mut redis::Connection> {
-        self.connection.as_mut()
+    fn bus_mut(&mut self) -> Option<&mut Bus> {
+        self.bus.as_mut()
     }
+
 
     fn route_count(&self) -> usize {
         self.route_count
@@ -164,38 +168,24 @@ impl RouterDomain {
     /// Connect to the Redis instance on this domain.
     fn connect(&mut self, username: &str, password: &str, port: u16) -> Result<(), String> {
 
-        if self.connection.is_some() {
+        if self.bus.is_some() {
             return Ok(())
         }
 
-        let info = ConnectionInfo {
-            addr: ConnectionAddr::Tcp(String::from(self.domain()), port),
-            redis: RedisConnectionInfo {
-                db: 0,
-                username: Some(username.to_string()),
-                password: Some(password.to_string()),
-            }
-        };
+        let mut conf = BusConfig::new();
+        conf.set_domain(self.domain());
+        conf.set_port(port);
+        conf.set_username(username);
+        conf.set_password(password);
 
-        let client = match redis::Client::open(info) {
-            Ok(c) => c,
+        let bus = match Bus::new(&conf, None) {
+            Ok(b) => b,
             Err(e) => {
-                return Err(format!(
-                    "Cannot connect to Redis domain: {} {}", self.domain(), e));
+                return Err(format!("Cannot connect bus: {}", e))
             }
         };
 
-        let connection = match client.get_connection() {
-            Ok(c) => c,
-            Err(e) => {
-                return Err(format!(
-                    "Cannot connect to Redis domain: {} {}", self.domain(), e));
-            }
-        };
-
-        self.connection = Some(connection);
-
-        info!("Connected to domain {} OK", self.domain());
+        self.bus = Some(bus);
 
         Ok(())
     }
@@ -209,15 +199,17 @@ impl RouterDomain {
 
         let maxlen = StreamMaxlen::Approx(1000); // TODO CONFIG
 
-        let con = match &mut self.connection {
-            Some(c) => c,
+        // TODO use bus.send() instead
+
+        let bus = match &mut self.bus {
+            Some(b) => b,
             None => {
-                return Err(format!("Lost connection to domain {}", self.domain()));
+                return Err(format!("We have no connection to domain {}", self.domain()));
             }
         };
 
         let res: Result<String, _> =
-            con.xadd_maxlen(addr.full(), maxlen, "*", &[("message", json_str)]);
+            bus.connection().xadd_maxlen(addr.full(), maxlen, "*", &[("message", json_str)]);
 
         if let Err(e) = res {
             return Err(format!("Error sending to domain {} : {}", self.domain(), e));
@@ -251,7 +243,7 @@ impl Router {
 
         let d = RouterDomain {
             domain: domain.to_string(),
-            connection: None,
+            bus: None,
             route_count: 0,
             services: Vec::new()
         };
@@ -290,18 +282,18 @@ impl Router {
     /// Setup the Redis stream/group we listen to
     pub fn setup_stream(&mut self) -> Result<(), String> {
 
-        let sname = &self.listen_address.full();
+        let sname = self.listen_address.full().to_string();
 
-        let con = &mut self.primary_domain.connection_mut().unwrap();
+        info!("Setting up primary stream={} group={}", &sname, &sname);
 
-        info!("Setting up primary stream={} group={}", sname, sname);
+        let con = &mut self.primary_domain.bus_mut().unwrap().connection();
 
-        let created: Result<(), _> = con.xgroup_create_mkstream(sname, sname, "$");
+        let created: Result<(), _> = con.xgroup_create_mkstream(&sname, &sname, "$");
 
         if let Err(e) = created {
             // TODO Differentiate error types.
             // Some errors are worse than others.
-            debug!("stream group {} probably already exists: {}", sname, e);
+            debug!("stream group {} probably already exists: {}", &sname, e);
         }
 
         Ok(())
@@ -334,7 +326,7 @@ impl Router {
             self.remote_domains.push(
                 RouterDomain {
                     domain: domain.to_string(),
-                    connection: None,
+                    bus: None,
                     route_count: 0,
                     services: Vec::new()
                 }
@@ -539,7 +531,7 @@ impl Router {
         for r_domain in &mut self.remote_domains {
             if r_domain.has_service(service) {
 
-                if r_domain.connection.is_none() {
+                if r_domain.bus.is_none() {
                     // We only connect to remote domains when it's
                     // time to send them a message.
                     r_domain.connect(
@@ -615,6 +607,8 @@ impl Router {
 
     fn recv_one(&mut self) -> Result<String, String> {
 
+        // TODO use bus.recv()
+
         let addr = self.listen_address.full();
 
         let read_opts = StreamReadOptions::default()
@@ -623,8 +617,10 @@ impl Router {
             .noack()  // We don't need ACK's
             .group(addr, addr);
 
-        let connection = self.primary_domain.connection_mut()
+        let bus = self.primary_domain.bus_mut()
             .expect("We always maintain a connection on the primary domain");
+
+        let connection = bus.connection();
 
         debug!("Waiting for messages at {}", addr);
 
@@ -673,7 +669,9 @@ impl Router {
 
 fn main() {
 
-    //env_logger::init();
+    let mut conf = ClientConfig::new();
+
+    conf.load_file("conf/opensrf_client.yml").unwrap();
 
     let mut router: Router = Router::new(
         "private.localhost",

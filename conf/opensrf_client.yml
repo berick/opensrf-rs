@@ -5,8 +5,6 @@ message_bus:
   port: 6379
   username: opensrf@private
   password: password
- #sock: /path/to/unix-socket-file
-
 
 logging:
     log4rs_config: conf/log4rs.yml
