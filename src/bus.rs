@@ -2,6 +2,7 @@ use super::conf::BusConfig;
 use super::error;
 use super::message::TransportMessage;
 use super::util;
+use super::addr::BusAddress;
 use gethostname::gethostname;
 use log::{debug, error, trace};
 use redis::streams::{StreamId, StreamKey, StreamMaxlen, StreamReadOptions, StreamReadReply};
@@ -16,10 +17,8 @@ const DEFAULT_REDIS_PORT: u16 = 6379;
 pub struct Bus {
     connection: redis::Connection,
 
-    /// Our unique identifier on the message bus
-    address: Option<String>,
+    address: BusAddress,
 
-    /// Where our bus lives.  Could be on another host.
     domain: String,
 }
 
@@ -42,22 +41,24 @@ impl Bus {
             }
         };
 
+        let addr = BusAddress::new_for_client(&domain, for_service);
+
         let mut bus = Bus {
             domain,
-            address: None,
-            connection: connection,
+            connection,
+            address: addr
         };
 
-        bus.set_address(for_service);
         bus.setup_stream(None)?;
 
         Ok(bus)
     }
 
     pub fn setup_stream(&mut self, name: Option<&str>) -> Result<(), error::Error> {
+
         let sname = match name {
             Some(n) => n.to_string(),
-            None => self.address().to_string(),
+            None => self.address().full().to_string(),
         };
 
         debug!("{} setting up stream={} group={}", self, sname, sname);
@@ -126,25 +127,8 @@ impl Bus {
         })
     }
 
-    /// Generates a unique address for this bus instance.
-    pub fn set_address(&mut self, service: Option<&str>) {
-        let maybe_service = match service {
-            Some(s) => format!("{}:", s),
-            None => String::from(""),
-        };
-
-        self.address = Some(format!(
-            "opensrf:client:{}:{}:{}{}:{}",
-            self.domain,
-            gethostname().into_string().unwrap(),
-            maybe_service,
-            process::id(),
-            &util::random_number(8)
-        ));
-    }
-
-    pub fn address(&self) -> &str {
-        self.address.as_ref().unwrap()
+    pub fn address(&self) -> &BusAddress {
+        &self.address
     }
 
     pub fn domain(&self) -> &str {
@@ -167,7 +151,7 @@ impl Bus {
 
         let sname = match stream {
             Some(s) => s.to_string(),
-            None => self.address().to_string(),
+            None => self.address().full().to_string(),
         };
 
         trace!(
@@ -348,7 +332,7 @@ impl Bus {
     }
 
     pub fn clear_stream(&mut self) -> Result<(), error::Error> {
-        let sname = self.address().to_string(); // XXX
+        let sname = self.address().full().to_string();
         let maxlen = StreamMaxlen::Equals(0);
         let res: Result<i32, _> = self.connection().xtrim(&sname, maxlen);
 
@@ -361,7 +345,7 @@ impl Bus {
 
     /// Removes our stream, which also removes our consumer group
     pub fn delete_stream(&mut self) -> Result<(), error::Error> {
-        let sname = self.address().to_string(); // XXX
+        let sname = self.address().full().to_string();
         let res: Result<i32, _> = self.connection().del(&sname);
 
         if let Err(e) = res {
@@ -376,7 +360,7 @@ impl Bus {
     pub fn disconnect(&mut self) -> Result<(), error::Error> {
         // Avoid deleting the stream for opensrf:service: connections
         // since those are shared.
-        if self.address()[0..15].eq("opensrf:client:") {
+        if self.address().is_client() {
             self.delete_stream()?;
         }
 

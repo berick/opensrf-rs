@@ -1,6 +1,5 @@
 use opensrf::client::Client;
 use opensrf::conf::ClientConfig;
-//use opensrf::websocket::WebsocketClient;
 
 fn main() {
     let mut conf = ClientConfig::new();

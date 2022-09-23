@@ -1,7 +1,7 @@
 # vim:et:ts=2:sw=2:
 
 message_bus:
-  host: 127.0.0.1
+  domain: localhost
   port: 6379
   username: opensrf@private
   password: password

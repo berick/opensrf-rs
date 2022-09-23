@@ -221,7 +221,7 @@ impl Client<'_> {
 
         let tm = TransportMessage::new_with_body(
             &remote_addr,
-            self.bus.address(),
+            self.bus.address().full(),
             client_ses.thread(),
             msg,
         );
@@ -270,7 +270,7 @@ impl Client<'_> {
 
         let tm = TransportMessage::new_with_body(
             &ses.remote_addr(),
-            self.bus.address(),
+            self.bus.address().full(),
             client_ses.thread(),
             msg,
         );
@@ -318,7 +318,7 @@ impl Client<'_> {
 
         let tm = TransportMessage::new_with_body(
             ses.remote_addr(),
-            self.bus.address(),
+            self.bus.address().full(),
             client_ses.thread(),
             req,
         );

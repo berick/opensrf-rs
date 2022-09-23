@@ -1,3 +1,4 @@
+mod addr;
 mod bus;
 pub mod classified;
 pub mod client;
