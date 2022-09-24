@@ -11,7 +11,7 @@ use super::session::Request;
 use super::session::Session;
 use super::*;
 use json::JsonValue;
-use log::{error, trace, warn};
+use log::{error, trace, warn, info};
 use std::collections::HashMap;
 use std::fmt;
 use std::time;
@@ -73,6 +73,32 @@ impl Client<'_> {
             serializer: None,
             for_service: None,
         })
+    }
+
+    pub fn get_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, error::Error> {
+
+        // Our primary bus address always has a domain.
+        if domain.eq(self.bus.address().domain().unwrap()) {
+            Ok(&mut self.bus)
+
+        } else {
+
+            if self.remote_bus_map.contains_key(domain) {
+                return Ok(self.remote_bus_map.get_mut(domain).unwrap());
+            }
+
+            self.add_connection(domain)
+        }
+    }
+
+    fn add_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, error::Error> {
+        let mut bus_conf = self.config.bus_config().clone();
+        let bus = Bus::new(&bus_conf, self.for_service.as_deref())?;
+
+        info!("Opened connection to new domain: {}", domain);
+
+        self.remote_bus_map.insert(domain.to_string(), bus);
+        self.get_connection(domain)
     }
 
     pub fn clear_bus(&mut self) -> Result<(), error::Error> {
@@ -202,12 +228,12 @@ impl Client<'_> {
     pub fn connect(&mut self, client_ses: &ClientSession) -> Result<(), error::Error> {
         trace!("Connecting {}", client_ses);
 
-        let my_addr = self.bus.address().full().to_string();
+        let my_addr = self.bus.address().full().to_string(); // mut borrow
 
         let mut ses = self.ses_mut(client_ses.thread());
         ses.last_thread_trace += 1;
 
-        let remote_addr = ses.remote_addr().full().to_string();
+        let remote_addr = ses.remote_addr().full().to_string(); // mut borrow
 
         let thread_trace = ses.last_thread_trace;
 
@@ -284,6 +310,7 @@ impl Client<'_> {
             msg,
         );
 
+        // TODO get_connection
         self.bus.send(&tm)?;
 
         // Avoid changing remote_addr until above message is composed.
@@ -327,12 +354,22 @@ impl Client<'_> {
 
         let tm = TransportMessage::new_with_body(
             ses.remote_addr().full(),
+            // All messages we send have a from address on our primary domain
             self.bus.address().full(),
             client_ses.thread(),
             req,
         );
 
-        self.bus.send(&tm)?;
+        let mut sent = false;
+        if ses.remote_addr().is_client() {
+            // We are in a connected session.
+            // Our remote end could be on a different domain.
+            let domain = ses.remote_addr().domain().unwrap().to_string();
+            let mut bus = self.get_connection(&domain)?;
+            bus.send(&tm)?;
+        } else {
+            self.bus.send(&tm)?;
+        }
 
         let ses = self.ses_mut(client_ses.thread());
 
