@@ -1,4 +1,5 @@
 use super::*;
+use super::addr::BusAddress;
 use log::trace;
 use std::collections::HashMap;
 
@@ -35,7 +36,9 @@ pub struct Session {
 
     /// Worker-specific bus address for our session.
     /// Only set once we are communicating with a specific worker.
-    pub remote_addr: Option<String>,
+    pub remote_addr: Option<BusAddress>,
+
+    pub default_addr: BusAddress,
 
     /// Each new Request within a Session gets a new thread_trace.
     /// Replies have the same thread_trace as their request.
@@ -56,6 +59,7 @@ impl Session {
             service: String::from(service),
             service_addr: String::from("opensrf:service:") + service,
             remote_addr: None,
+            default_addr: BusAddress::new_for_service(&service),
             connected: false,
             last_thread_trace: 0,
             thread: util::random_number(16),
@@ -82,18 +86,20 @@ impl Session {
     }
 
     pub fn reset(&mut self) {
-        self.remote_addr = Some(self.service.to_string());
+        self.remote_addr = None;
         self.connected = false;
     }
 
-    pub fn remote_addr(&self) -> &str {
+    /// Returns the address of the remote end if we are connected.  Otherwise,
+    /// returns the default remote address of the service we are talking to.
+    pub fn remote_addr(&self) -> &BusAddress {
         if self.connected {
             if let Some(ref ra) = self.remote_addr {
                 return ra;
             }
         }
 
-        &self.service_addr
+        &self.default_addr
     }
 
     /// Returns true if the provided request has pending replies

@@ -32,6 +32,7 @@ enum UnpackedReply {
 pub struct Client<'a> {
     bus: bus::Bus,
 
+    /// Connections to remote domains.
     remote_bus_map: HashMap<String, bus::Bus>,
 
     config: ClientConfig,
@@ -181,8 +182,9 @@ impl Client<'_> {
 
         let ses = self.ses_mut(thread);
 
-        if ses.remote_addr() != tm.from() {
-            ses.remote_addr = Some(tm.from().to_string());
+        if ses.remote_addr().full() != tm.from() {
+            // TODO return error on bad address
+            ses.remote_addr = Some(BusAddress::new_from_string(tm.from()).unwrap());
         }
 
         Ok(Some(tm))
@@ -200,11 +202,14 @@ impl Client<'_> {
     pub fn connect(&mut self, client_ses: &ClientSession) -> Result<(), error::Error> {
         trace!("Connecting {}", client_ses);
 
+        let my_addr = self.bus.address().full().to_string();
+
         let mut ses = self.ses_mut(client_ses.thread());
         ses.last_thread_trace += 1;
 
+        let remote_addr = ses.remote_addr().full().to_string();
+
         let thread_trace = ses.last_thread_trace;
-        let remote_addr = ses.remote_addr().to_string();
 
         ses.requests.insert(
             thread_trace,
@@ -225,7 +230,7 @@ impl Client<'_> {
 
         let tm = TransportMessage::new_with_body(
             &remote_addr,
-            self.bus.address().full(),
+            &my_addr,
             client_ses.thread(),
             msg,
         );
@@ -273,7 +278,7 @@ impl Client<'_> {
         );
 
         let tm = TransportMessage::new_with_body(
-            &ses.remote_addr(),
+            ses.remote_addr().full(),
             self.bus.address().full(),
             client_ses.thread(),
             msg,
@@ -321,7 +326,7 @@ impl Client<'_> {
         let req = Message::new(MessageType::Request, ses.last_thread_trace, payload);
 
         let tm = TransportMessage::new_with_body(
-            ses.remote_addr(),
+            ses.remote_addr().full(),
             self.bus.address().full(),
             client_ses.thread(),
             req,

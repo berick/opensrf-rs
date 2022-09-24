@@ -3,6 +3,8 @@ use gethostname::gethostname;
 use std::process;
 use super::util;
 
+const BUS_ADDR_NAMESPACE: &str = "opensrf";
+
 /// Models a bus-level address providing access to indivual components
 /// of each address.
 ///
@@ -49,11 +51,9 @@ impl BusAddress {
             None => String::from(""),
         };
 
-        let namespace = String::from("opensrf"); // only supported option
-
         let full = format!(
             "{}:client:{}:{}:{}{}:{}",
-            &namespace,
+            BUS_ADDR_NAMESPACE,
             &domain,
             &gethostname().into_string().unwrap(),
             &maybe_service,
@@ -63,7 +63,7 @@ impl BusAddress {
 
         BusAddress {
             full,
-            namespace,
+            namespace: BUS_ADDR_NAMESPACE.to_string(),
             domain: Some(domain.to_string()),
             service: None,
             is_client: true,
@@ -75,13 +75,11 @@ impl BusAddress {
     /// Create a new bus address for a router.
     pub fn new_for_router(domain: &str) -> Self {
 
-        let namespace = String::from("opensrf"); // only supported option
-
-        let full = format!("{}:router:{}", &namespace, &domain);
+        let full = format!("{}:router:{}", BUS_ADDR_NAMESPACE, &domain);
 
         BusAddress {
             full,
-            namespace,
+            namespace: BUS_ADDR_NAMESPACE.to_string(),
             domain: Some(domain.to_string()),
             service: None,
             is_client: false,
@@ -89,6 +87,23 @@ impl BusAddress {
             is_router: true,
         }
     }
+
+    /// Create a new bus address for a router.
+    pub fn new_for_service(service: &str) -> Self {
+
+        let full = format!("{}:service:{}", BUS_ADDR_NAMESPACE, &service);
+
+        BusAddress {
+            full,
+            namespace: BUS_ADDR_NAMESPACE.to_string(),
+            domain: None,
+            service: Some(service.to_string()),
+            is_client: false,
+            is_service: true,
+            is_router: false,
+        }
+    }
+
 
     /// Creates a new BusAddress from a bus address string.
     pub fn new_from_string(full: &str) -> Result<Self, String> {
