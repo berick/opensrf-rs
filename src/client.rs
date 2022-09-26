@@ -1,5 +1,5 @@
-use super::bus::Bus;
 use super::addr::BusAddress;
+use super::bus::Bus;
 use super::conf::{BusConfig, ClientConfig};
 use super::message::Message;
 use super::message::MessageStatus;
@@ -11,7 +11,7 @@ use super::session::Request;
 use super::session::Session;
 use super::*;
 use json::JsonValue;
-use log::{error, trace, warn, info};
+use log::{error, info, trace, warn};
 use std::collections::HashMap;
 use std::fmt;
 use std::time;
@@ -52,7 +52,6 @@ pub struct Client<'a> {
 }
 
 impl Client<'_> {
-
     pub fn new(config: ClientConfig) -> Result<Self, error::Error> {
         let bus = Bus::new(config.bus_config(), None)?;
         Client::new_common(config, bus)
@@ -80,13 +79,10 @@ impl Client<'_> {
     }
 
     pub fn get_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, error::Error> {
-
         // Our primary bus address always has a domain.
         if domain.eq(self.bus.address().domain().unwrap()) {
             Ok(&mut self.bus)
-
         } else {
-
             if self.remote_bus_map.contains_key(domain) {
                 return Ok(self.remote_bus_map.get_mut(domain).unwrap());
             }
@@ -258,12 +254,7 @@ impl Client<'_> {
             message::Payload::NoPayload,
         );
 
-        let tm = TransportMessage::new_with_body(
-            &remote_addr,
-            &my_addr,
-            client_ses.thread(),
-            msg,
-        );
+        let tm = TransportMessage::new_with_body(&remote_addr, &my_addr, client_ses.thread(), msg);
 
         self.bus.send(&tm)?;
 
@@ -624,13 +615,20 @@ impl Client<'_> {
         }
     }
 
-    pub fn send_router_command(&mut self, domain: &str, rtr_command: &str, rtr_class: &str) -> Result<(), error::Error> {
-
+    pub fn send_router_command(
+        &mut self,
+        domain: &str,
+        rtr_command: &str,
+        rtr_class: &str,
+    ) -> Result<(), error::Error> {
         let addr = BusAddress::new_for_router(domain);
 
         // Always use the address of our primary Bus
         let mut tmsg = TransportMessage::new(
-            addr.full(), self.bus.address().full(), &util::random_number(16));
+            addr.full(),
+            self.bus.address().full(),
+            &util::random_number(16),
+        );
 
         tmsg.set_router_command(rtr_command);
         tmsg.set_router_class(rtr_class);
@@ -638,7 +636,6 @@ impl Client<'_> {
         let bus = self.get_connection(domain)?;
         bus.send(&tmsg)
     }
-
 }
 
 // Immutable context structs the caller owns for managing

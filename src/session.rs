@@ -1,5 +1,5 @@
-use super::*;
 use super::addr::BusAddress;
+use super::*;
 use log::trace;
 use std::collections::HashMap;
 

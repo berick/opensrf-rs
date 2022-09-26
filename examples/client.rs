@@ -4,7 +4,8 @@ use opensrf::conf::ClientConfig;
 fn main() {
     let mut conf = ClientConfig::new();
 
-    conf.load_file("conf/opensrf_client.yml").expect("Cannot load config file");
+    conf.load_file("conf/opensrf_client.yml")
+        .expect("Cannot load config file");
 
     let mut client = Client::new(conf).expect("Could not build client");
 

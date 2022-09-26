@@ -1,13 +1,13 @@
-use std::fmt;
-use log::{error, warn, info, debug, trace};
-use std::collections::HashMap;
 use chrono::prelude::{DateTime, Local};
-use redis::streams::{StreamId, StreamKey, StreamMaxlen, StreamReadOptions, StreamReadReply};
-use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo, Value};
+use log::{debug, error, info, trace, warn};
 use opensrf::addr::BusAddress;
 use opensrf::bus::Bus;
 use opensrf::conf::BusConfig;
 use opensrf::conf::ClientConfig;
+use redis::streams::{StreamId, StreamKey, StreamMaxlen, StreamReadOptions, StreamReadReply};
+use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo, Value};
+use std::collections::HashMap;
+use std::fmt;
 use std::thread;
 
 const DEFAULT_REDIS_PORT: u16 = 6379;
@@ -23,7 +23,6 @@ struct ServiceInstance {
 }
 
 impl ServiceInstance {
-
     fn address(&self) -> &BusAddress {
         &self.address
     }
@@ -46,7 +45,7 @@ impl ServiceInstance {
 #[derive(Debug, Clone)]
 struct ServiceEntry {
     name: String,
-    controllers: Vec<ServiceInstance>
+    controllers: Vec<ServiceInstance>,
 }
 
 impl ServiceEntry {
@@ -59,11 +58,21 @@ impl ServiceEntry {
     }
 
     fn remove_controller(&mut self, address: &BusAddress) {
-        if let Some(pos) = self.controllers.iter().position(|c| c.address().full().eq(address.full())) {
-            debug!("Removing controller for service={} address={}", self.name, address);
+        if let Some(pos) = self
+            .controllers
+            .iter()
+            .position(|c| c.address().full().eq(address.full()))
+        {
+            debug!(
+                "Removing controller for service={} address={}",
+                self.name, address
+            );
             self.controllers.remove(pos);
         } else {
-            debug!("Cannot remove unknown controller service={} address={}", self.name, address);
+            debug!(
+                "Cannot remove unknown controller service={} address={}",
+                self.name, address
+            );
         }
     }
 
@@ -83,7 +92,6 @@ impl ServiceEntry {
 /// A domain will typically host multiple services.
 /// E.g. "public.localhost"
 struct RouterDomain {
-
     // e.g. public.localhost
     domain: String,
 
@@ -104,7 +112,6 @@ struct RouterDomain {
 }
 
 impl RouterDomain {
-
     fn domain(&self) -> &str {
         &self.domain
     }
@@ -116,7 +123,6 @@ impl RouterDomain {
     fn bus_mut(&mut self) -> Option<&mut Bus> {
         self.bus.as_mut()
     }
-
 
     fn route_count(&self) -> usize {
         self.route_count
@@ -131,13 +137,14 @@ impl RouterDomain {
     }
 
     fn remove_service(&mut self, service: &str, address: &BusAddress) {
-
         if let Some(s_pos) = self.services.iter().position(|s| s.name().eq(service)) {
-
             let svc = self.services.get_mut(s_pos).unwrap(); // known OK
 
-            if let Some(c_pos) = svc.controllers.iter().position(|c| c.address().full().eq(address.full())) {
-
+            if let Some(c_pos) = svc
+                .controllers
+                .iter()
+                .position(|c| c.address().full().eq(address.full()))
+            {
                 if svc.controllers.len() == 1 {
                     debug!(
                         "Removing registration for service={} on removal of last controller address={}",
@@ -147,7 +154,6 @@ impl RouterDomain {
                     if let Some(s_pos) = self.services.iter().position(|s| s.name().eq(service)) {
                         self.services.remove(s_pos);
                     }
-
                 } else {
                     debug!("Removing registration for service={}", service);
                     svc.controllers.remove(c_pos);
@@ -168,9 +174,8 @@ impl RouterDomain {
 
     /// Connect to the Redis instance on this domain.
     fn connect(&mut self, username: &str, password: &str, port: u16) -> Result<(), String> {
-
         if self.bus.is_some() {
-            return Ok(())
+            return Ok(());
         }
 
         let mut conf = BusConfig::new();
@@ -181,9 +186,7 @@ impl RouterDomain {
 
         let bus = match Bus::new(&conf, None) {
             Ok(b) => b,
-            Err(e) => {
-                return Err(format!("Cannot connect bus: {}", e))
-            }
+            Err(e) => return Err(format!("Cannot connect bus: {}", e)),
         };
 
         self.bus = Some(bus);
@@ -193,7 +196,6 @@ impl RouterDomain {
 
     /// Send a message to this domain via our domain connection.
     fn send_to_domain(&mut self, addr: &BusAddress, msg: &json::JsonValue) -> Result<(), String> {
-
         let json_str = msg.dump();
 
         trace!("send() writing chunk to={}: {}", addr.full(), json_str);
@@ -210,7 +212,8 @@ impl RouterDomain {
         };
 
         let res: Result<String, _> =
-            bus.connection().xadd_maxlen(addr.full(), maxlen, "*", &[("message", json_str)]);
+            bus.connection()
+                .xadd_maxlen(addr.full(), maxlen, "*", &[("message", json_str)]);
 
         if let Err(e) = res {
             return Err(format!("Error sending to domain {} : {}", self.domain(), e));
@@ -221,7 +224,6 @@ impl RouterDomain {
 }
 
 struct Router {
-
     /// Primary domain for this router instance.
     primary_domain: RouterDomain,
 
@@ -238,7 +240,6 @@ struct Router {
 }
 
 impl Router {
-
     pub fn new(domain: &str, username: &str, password: &str, port: u16) -> Self {
         let addr = BusAddress::new_for_router(domain);
 
@@ -246,7 +247,7 @@ impl Router {
             domain: domain.to_string(),
             bus: None,
             route_count: 0,
-            services: Vec::new()
+            services: Vec::new(),
         };
 
         Router {
@@ -255,13 +256,13 @@ impl Router {
             bus_password: password.to_string(),
             primary_domain: d,
             listen_address: addr,
-            remote_domains: Vec::new()
+            remote_domains: Vec::new(),
         }
     }
 
     fn init(&mut self) -> Result<(), String> {
-        self.primary_domain.connect(
-            &self.bus_username, &self.bus_password, self.bus_port)?;
+        self.primary_domain
+            .connect(&self.bus_username, &self.bus_password, self.bus_port)?;
 
         self.setup_stream()?;
 
@@ -282,7 +283,6 @@ impl Router {
 
     /// Setup the Redis stream/group we listen to
     pub fn setup_stream(&mut self) -> Result<(), String> {
-
         let sname = self.listen_address.full().to_string();
 
         info!("Setting up primary stream={} group={}", &sname, &sname);
@@ -313,7 +313,6 @@ impl Router {
 
     /// Find or create a new RouterDomain entry.
     fn find_or_create_domain(&mut self, domain: &str) -> Option<&mut RouterDomain> {
-
         if self.primary_domain.domain.eq(domain) {
             return Some(&mut self.primary_domain);
         }
@@ -321,17 +320,14 @@ impl Router {
         let mut pos_op = self.remote_domains.iter().position(|d| d.domain.eq(domain));
 
         if pos_op.is_none() {
-
             debug!("Adding new RouterDomain for domain={}", domain);
 
-            self.remote_domains.push(
-                RouterDomain {
-                    domain: domain.to_string(),
-                    bus: None,
-                    route_count: 0,
-                    services: Vec::new()
-                }
-            );
+            self.remote_domains.push(RouterDomain {
+                domain: domain.to_string(),
+                bus: None,
+                route_count: 0,
+                services: Vec::new(),
+            });
 
             pos_op = Some(self.remote_domains.len() - 1);
         }
@@ -340,7 +336,6 @@ impl Router {
     }
 
     fn handle_unregister(&mut self, address: &BusAddress, service: &str) -> Result<(), String> {
-
         let domain = address.domain().unwrap(); // Known client address
 
         info!(
@@ -354,7 +349,7 @@ impl Router {
             // Remove services and controllers as necessary, though.
 
             self.primary_domain.remove_service(service, &address);
-            return Ok(())
+            return Ok(());
         }
 
         // When removing the last service from a remote domain, remove
@@ -384,7 +379,6 @@ impl Router {
     }
 
     fn handle_register(&mut self, address: BusAddress, service: &str) -> Result<(), String> {
-
         let domain = address.domain().unwrap(); // Known to be a client addr.
 
         info!("Registering new domain={}", domain);
@@ -392,7 +386,10 @@ impl Router {
         let r_domain = match self.find_or_create_domain(domain) {
             Some(d) => d,
             None => {
-                return Err(format!("Cannot find/create domain entry for domain {}", domain));
+                return Err(format!(
+                    "Cannot find/create domain entry for domain {}",
+                    domain
+                ));
             }
         };
 
@@ -400,7 +397,6 @@ impl Router {
             // See if we have a ServiceEntry for this service on this domain.
 
             if svc.name.eq(service) {
-
                 for controller in &mut svc.controllers {
                     if controller.address.full().eq(address.full()) {
                         warn!(
@@ -416,12 +412,10 @@ impl Router {
                     domain, service, address
                 );
 
-                svc.controllers.push(
-                    ServiceInstance {
-                        address: address.clone(),
-                        register_time: Local::now(),
-                    }
-                );
+                svc.controllers.push(ServiceInstance {
+                    address: address.clone(),
+                    register_time: Local::now(),
+                });
 
                 return Ok(());
             }
@@ -435,26 +429,25 @@ impl Router {
             domain, service, address
         );
 
-        r_domain.services.push(
-            ServiceEntry {
-                name: service.to_string(),
-                controllers: vec![
-                    ServiceInstance {
-                        address: address,
-                        register_time: Local::now(),
-                    }
-                ]
-            }
-        );
+        r_domain.services.push(ServiceEntry {
+            name: service.to_string(),
+            controllers: vec![ServiceInstance {
+                address: address,
+                register_time: Local::now(),
+            }],
+        });
 
         Ok(())
     }
 
     /// List of currently active services by service name.
     fn active_services(&self) -> Vec<&str> {
-
-        let mut services: Vec<&str> =
-            self.primary_domain().services().iter().map(|s| s.name()).collect();
+        let mut services: Vec<&str> = self
+            .primary_domain()
+            .services()
+            .iter()
+            .map(|s| s.name())
+            .collect();
 
         for d in self.remote_domains() {
             for s in d.services() {
@@ -468,16 +461,17 @@ impl Router {
     }
 
     fn listen(&mut self) {
-
         // Listen for inbound requests / router commands on our primary
         // domain and route accordingly.
 
         loop {
-
             let msg_str = match self.recv_one() {
                 Ok(s) => s,
                 Err(s) => {
-                    error!("Error receiving data on our primary domain connection: {}", s);
+                    error!(
+                        "Error receiving data on our primary domain connection: {}",
+                        s
+                    );
                     continue; // break and exit?
                 }
             };
@@ -489,11 +483,13 @@ impl Router {
     }
 
     fn route_message(&mut self, msg_str: &str) -> Result<(), String> {
-
         let json_val = match json::parse(msg_str) {
             Ok(v) => v,
             Err(e) => {
-                return Err(format!("Failed to parse message as JSON: {} {}", e, msg_str));
+                return Err(format!(
+                    "Failed to parse message as JSON: {} {}",
+                    e, msg_str
+                ));
             }
         };
 
@@ -509,20 +505,19 @@ impl Router {
         let addr = BusAddress::new_from_string(to)?;
 
         if addr.is_service() {
-
             return self.route_api_request(&addr, &json_val);
-
         } else if addr.is_router() {
-
             return self.handle_router_command(&json_val);
-
         } else {
             return Err(format!("Unexpected message recipient: {}", to));
         }
     }
 
-    fn route_api_request(&mut self, addr: &BusAddress, json_val: &json::JsonValue) -> Result<(), String> {
-
+    fn route_api_request(
+        &mut self,
+        addr: &BusAddress,
+        json_val: &json::JsonValue,
+    ) -> Result<(), String> {
         let service = addr.service().unwrap(); // required for is_service
 
         if self.primary_domain.has_service(service) {
@@ -531,12 +526,10 @@ impl Router {
 
         for r_domain in &mut self.remote_domains {
             if r_domain.has_service(service) {
-
                 if r_domain.bus.is_none() {
                     // We only connect to remote domains when it's
                     // time to send them a message.
-                    r_domain.connect(
-                        &self.bus_username, &self.bus_password, self.bus_port)?;
+                    r_domain.connect(&self.bus_username, &self.bus_password, self.bus_port)?;
                 }
 
                 return r_domain.send_to_domain(addr, json_val);
@@ -545,11 +538,13 @@ impl Router {
 
         // TODO communicate this to the caller.
 
-        return Err(format!("We have no service controllers for service {}", service));
+        return Err(format!(
+            "We have no service controllers for service {}",
+            service
+        ));
     }
 
     fn handle_router_command(&mut self, json_val: &json::JsonValue) -> Result<(), String> {
-
         let router_command = match json_val["router_command"].as_str() {
             Some(s) => s,
             None => {
@@ -560,14 +555,20 @@ impl Router {
         let from = match json_val["from"].as_str() {
             Some(s) => s,
             None => {
-                return Err(format!("Router command message has no 'from': {}", json_val));
+                return Err(format!(
+                    "Router command message has no 'from': {}",
+                    json_val
+                ));
             }
         };
 
         let from_addr = match BusAddress::new_from_string(from) {
             Ok(a) => a,
             Err(e) => {
-                return Err(format!("Router command received invalid from address: {}", e));
+                return Err(format!(
+                    "Router command received invalid from address: {}",
+                    e
+                ));
             }
         };
 
@@ -575,28 +576,28 @@ impl Router {
             return Err(format!("Router command received from non-client address"));
         }
 
-        debug!("Router command received command={} from={}", router_command, from);
+        debug!(
+            "Router command received command={} from={}",
+            router_command, from
+        );
 
         // Not all router commands require a router class.
         let router_class_op = json_val["router_class"].as_str();
 
         if router_command.eq("register") {
-
             match router_class_op {
                 Some(rclass) => {
                     return self.handle_register(from_addr, rclass);
-                },
+                }
                 None => {
                     return Err(format!("No router class defined: {}", json_val));
                 }
             }
-
         } else if router_command.eq("unregister") {
-
             match router_class_op {
                 Some(rclass) => {
                     return self.handle_unregister(&from_addr, rclass);
-                },
+                }
                 None => {
                     return Err(format!("No router class defined: {}", json_val));
                 }
@@ -607,7 +608,6 @@ impl Router {
     }
 
     fn recv_one(&mut self) -> Result<String, String> {
-
         // TODO use bus.recv()
 
         let addr = self.listen_address.full();
@@ -615,28 +615,31 @@ impl Router {
         let read_opts = StreamReadOptions::default()
             .count(1) // One at a time, please
             .block(0) // Block indefinitely
-            .noack()  // We don't need ACK's
+            .noack() // We don't need ACK's
             .group(addr, addr);
 
-        let bus = self.primary_domain.bus_mut()
+        let bus = self
+            .primary_domain
+            .bus_mut()
             .expect("We always maintain a connection on the primary domain");
 
         let connection = bus.connection();
 
         debug!("Waiting for messages at {}", addr);
 
-        let reply: StreamReadReply = match
-            connection.xread_options(&[&addr], &[">"], &read_opts) {
-
+        let reply: StreamReadReply = match connection.xread_options(&[&addr], &[">"], &read_opts) {
             Ok(r) => r,
             Err(e) => match e.kind() {
                 redis::ErrorKind::TypeError => {
                     return Err(format!(
-                        "Redis returned unexpected type; could be a signal interrupt"));
-                },
+                        "Redis returned unexpected type; could be a signal interrupt"
+                    ));
+                }
                 _ => {
                     return Err(format!(
-                        "Error reading Redis instance for primary domain: {}", e));
+                        "Error reading Redis instance for primary domain: {}",
+                        e
+                    ));
                 }
             },
         };
@@ -653,9 +656,7 @@ impl Router {
                             trace!("Read value from bus: {}", s);
                             return Ok(s);
                         } else {
-                            return Err(format!(
-                                "Received unexpected stream data: {:?}", message
-                            ));
+                            return Err(format!("Received unexpected stream data: {:?}", message));
                         };
                     } else {
                         return Err(format!("Received unexpected stream data"));
@@ -669,19 +670,13 @@ impl Router {
 }
 
 fn main() {
-
     let mut conf = ClientConfig::new();
 
     conf.load_file("conf/opensrf_client.yml").unwrap();
 
     let t1 = thread::spawn(|| {
-
-        let mut router: Router = Router::new(
-            "private.localhost",
-            "opensrf@private",
-            "password",
-            6379
-        );
+        let mut router: Router =
+            Router::new("private.localhost", "opensrf@private", "password", 6379);
 
         router.init().expect("Router init");
 
@@ -689,13 +684,8 @@ fn main() {
     });
 
     let t2 = thread::spawn(|| {
-
-        let mut router: Router = Router::new(
-            "public.localhost",
-            "opensrf@private",
-            "password",
-            6379
-        );
+        let mut router: Router =
+            Router::new("public.localhost", "opensrf@private", "password", 6379);
 
         router.init().expect("Router init");
 
@@ -729,5 +719,3 @@ fn main() {
 
     //println!("{}", router.to_json_value().dump());
 }
-
-

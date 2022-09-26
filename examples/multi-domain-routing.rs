@@ -1,6 +1,6 @@
+use opensrf::addr::BusAddress;
 use opensrf::bus::Bus;
 use opensrf::client::Client;
-use opensrf::addr::BusAddress;
 use opensrf::conf::BusConfig;
 use opensrf::conf::ClientConfig;
 use opensrf::message::TransportMessage;
@@ -12,7 +12,6 @@ const PRIVATE_DOMAIN: &str = "private.localhost";
 const PUBLIC_DOMAIN: &str = "public.localhost";
 
 fn main() {
-
     // Useful for logging
     let mut conf = ClientConfig::new();
 
@@ -24,20 +23,28 @@ fn main() {
 
     let mut pvt_client = Client::new(conf).unwrap();
 
-    pvt_client.send_router_command(PRIVATE_DOMAIN, "register", PRIVATE_SERVICE).unwrap();
+    pvt_client
+        .send_router_command(PRIVATE_DOMAIN, "register", PRIVATE_SERVICE)
+        .unwrap();
 
     conf2.bus_config_mut().set_domain(PUBLIC_DOMAIN);
 
     let mut pub_client = Client::new(conf2).unwrap();
 
-    pub_client.send_router_command(PRIVATE_DOMAIN, "register", PUBLIC_SERVICE).unwrap();
-    pub_client.send_router_command(PUBLIC_DOMAIN, "register", PUBLIC_SERVICE).unwrap();
+    pub_client
+        .send_router_command(PRIVATE_DOMAIN, "register", PUBLIC_SERVICE)
+        .unwrap();
+    pub_client
+        .send_router_command(PUBLIC_DOMAIN, "register", PUBLIC_SERVICE)
+        .unwrap();
 
-
-    pvt_client.send_router_command(PRIVATE_DOMAIN, "unregister", PRIVATE_SERVICE).unwrap();
-    pub_client.send_router_command(PRIVATE_DOMAIN, "unregister", PUBLIC_SERVICE).unwrap();
-    pub_client.send_router_command(PUBLIC_DOMAIN, "unregister", PUBLIC_SERVICE).unwrap();
+    pvt_client
+        .send_router_command(PRIVATE_DOMAIN, "unregister", PRIVATE_SERVICE)
+        .unwrap();
+    pub_client
+        .send_router_command(PRIVATE_DOMAIN, "unregister", PUBLIC_SERVICE)
+        .unwrap();
+    pub_client
+        .send_router_command(PUBLIC_DOMAIN, "unregister", PUBLIC_SERVICE)
+        .unwrap();
 }
-
-
-

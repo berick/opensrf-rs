@@ -1,8 +1,8 @@
+use super::addr::BusAddress;
 use super::conf::BusConfig;
 use super::error;
 use super::message::TransportMessage;
 use super::util;
-use super::addr::BusAddress;
 use gethostname::gethostname;
 use log::{debug, error, trace};
 use redis::streams::{StreamId, StreamKey, StreamMaxlen, StreamReadOptions, StreamReadReply};
@@ -23,10 +23,7 @@ pub struct Bus {
 }
 
 impl Bus {
-
-    pub fn new(bus_config: &BusConfig,
-        for_service: Option<&str>) -> Result<Self, error::Error> {
-
+    pub fn new(bus_config: &BusConfig, for_service: Option<&str>) -> Result<Self, error::Error> {
         let info = Bus::connection_info(bus_config)?;
         let domain = Bus::host_from_connection_info(&info);
 
@@ -46,7 +43,7 @@ impl Bus {
         let mut bus = Bus {
             domain,
             connection,
-            address: addr
+            address: addr,
         };
 
         bus.setup_stream(None)?;
@@ -55,7 +52,6 @@ impl Bus {
     }
 
     pub fn setup_stream(&mut self, name: Option<&str>) -> Result<(), error::Error> {
-
         let sname = match name {
             Some(n) => n.to_string(),
             None => self.address().full().to_string(),
@@ -148,7 +144,6 @@ impl Bus {
         timeout: i32,
         stream: Option<&str>,
     ) -> Result<Option<String>, error::Error> {
-
         let sname = match stream {
             Some(s) => s.to_string(),
             None => self.address().full().to_string(),
@@ -226,7 +221,6 @@ impl Bus {
         timeout: i32,
         stream: Option<&str>,
     ) -> Result<Option<json::JsonValue>, error::Error> {
-
         let json_string = match self.recv_one_chunk(timeout, stream)? {
             Some(s) => s,
             None => {

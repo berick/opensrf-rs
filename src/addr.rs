@@ -1,7 +1,7 @@
-use std::fmt;
-use gethostname::gethostname;
-use std::process;
 use super::util;
+use gethostname::gethostname;
+use std::fmt;
+use std::process;
 
 const BUS_ADDR_NAMESPACE: &str = "opensrf";
 
@@ -15,7 +15,6 @@ const BUS_ADDR_NAMESPACE: &str = "opensrf";
 /// opensrf:router:$domain
 #[derive(Debug, Clone)]
 pub struct BusAddress {
-
     /// Full raw address string
     full: String,
 
@@ -40,12 +39,10 @@ impl fmt::Display for BusAddress {
 }
 
 impl BusAddress {
-
     /// Create a new bus address for a client.
     ///
     /// If service is set, this is a client address for a service.
     pub fn new_for_client(domain: &str, service: Option<&str>) -> Self {
-
         let maybe_service = match service {
             Some(s) => format!("{}:", s),
             None => String::from(""),
@@ -74,7 +71,6 @@ impl BusAddress {
 
     /// Create a new bus address for a router.
     pub fn new_for_router(domain: &str) -> Self {
-
         let full = format!("{}:router:{}", BUS_ADDR_NAMESPACE, &domain);
 
         BusAddress {
@@ -90,7 +86,6 @@ impl BusAddress {
 
     /// Create a new bus address for a router.
     pub fn new_for_service(service: &str) -> Self {
-
         let full = format!("{}:service:{}", BUS_ADDR_NAMESPACE, &service);
 
         BusAddress {
@@ -104,10 +99,8 @@ impl BusAddress {
         }
     }
 
-
     /// Creates a new BusAddress from a bus address string.
     pub fn new_from_string(full: &str) -> Result<Self, String> {
-
         let parts: Vec<&str> = full.split(':').collect();
 
         // We only really care about the first 3 parts of the address.
@@ -132,15 +125,12 @@ impl BusAddress {
         if purpose.eq("service") {
             addr.service = Some(sod);
             addr.is_service = true;
-
         } else if purpose.eq("client") {
             addr.domain = Some(sod);
             addr.is_client = true;
-
         } else if purpose.eq("router") {
             addr.domain = Some(sod);
             addr.is_router = true;
-
         } else {
             return Err(format!("Unknown BusAddress purpose: {}", purpose));
         }
@@ -150,7 +140,6 @@ impl BusAddress {
 }
 
 impl BusAddress {
-
     /// Full address string
     pub fn full(&self) -> &str {
         &self.full
@@ -175,4 +164,3 @@ impl BusAddress {
         self.is_router
     }
 }
-
