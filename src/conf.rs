@@ -71,7 +71,7 @@ enum LogLevel {
 }
 */
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ClientConfig {
     bus_config: BusConfig,
     /*
@@ -99,6 +99,10 @@ impl ClientConfig {
 
     pub fn bus_config(&self) -> &BusConfig {
         &self.bus_config
+    }
+
+    pub fn bus_config_mut(&mut self) -> &mut BusConfig {
+        &mut self.bus_config
     }
 
     /// Load configuration from a YAML file

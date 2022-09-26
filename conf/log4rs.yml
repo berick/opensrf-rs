@@ -4,7 +4,7 @@ appenders:
     kind: file
     path: "log/opensrf.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S%.3f)} [{l}:{P}:{M}:{L}] {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S%.3f)} [{l}:{P}:{M}:{L}:{I}] {m}{n}"
 
 root:
   level: trace

@@ -75,6 +75,10 @@ impl Client<'_> {
         })
     }
 
+    pub fn primary_bus(&self) -> &bus::Bus {
+        &self.bus
+    }
+
     pub fn get_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, error::Error> {
 
         // Our primary bus address always has a domain.
@@ -310,8 +314,11 @@ impl Client<'_> {
             msg,
         );
 
-        // TODO get_connection
-        self.bus.send(&tm)?;
+        // A disconnect only makes sense in the context of communicating
+        // directly with a client.
+        let domain = ses.remote_addr().domain().unwrap().to_string();
+        let bus = self.get_connection(&domain)?;
+        bus.send(&tm)?;
 
         // Avoid changing remote_addr until above message is composed.
         self.ses_mut(client_ses.thread()).reset();
@@ -628,10 +635,8 @@ impl Client<'_> {
         tmsg.set_router_command(rtr_command);
         tmsg.set_router_class(rtr_class);
 
-        // TODO use the bus that matches the requested domain
-        self.bus.send(&tmsg)
-
-        // TODO should we expect a response from the router?
+        let bus = self.get_connection(domain)?;
+        bus.send(&tmsg)
     }
 
 }

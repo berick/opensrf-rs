@@ -1,55 +1,42 @@
 use opensrf::bus::Bus;
+use opensrf::client::Client;
 use opensrf::addr::BusAddress;
 use opensrf::conf::BusConfig;
 use opensrf::conf::ClientConfig;
 use opensrf::message::TransportMessage;
 
 const PRIVATE_SERVICE: &str = "opensrf.private";
-const PRIVATE_ROUTER: &str = "opensrf:router:private.localhost";
 const PUBLIC_SERVICE: &str = "opensrf.public";
-const PUBLIC_ROUTER: &str = "opensrf:router:public.localhost";
+
+const PRIVATE_DOMAIN: &str = "private.localhost";
+const PUBLIC_DOMAIN: &str = "public.localhost";
 
 fn main() {
 
     // Useful for logging
     let mut conf = ClientConfig::new();
-    conf.load_file("conf/opensrf_client.yml").expect("Cannot load config file");
 
-    /// Create a bus for a service running on private.localhost
-    let mut conf = BusConfig::new();
-    conf.set_username("opensrf@private");
-    conf.set_password("password");
-    conf.set_domain("private.localhost");
+    // Force the config to use the private domain.
+    conf.bus_config_mut().set_domain(PRIVATE_DOMAIN);
+    conf.load_file("conf/opensrf_client.yml").unwrap();
 
-    let mut pvt_bus = Bus::new(&conf, Some(PRIVATE_SERVICE)).unwrap();
+    let mut conf2 = conf.clone();
 
-    /// Create a bus for a service running on public.localhost
-    conf.set_username("opensrf@private");
+    let mut pvt_client = Client::new(conf).unwrap();
 
-    let mut pub_bus = Bus::new(&conf, Some(PUBLIC_SERVICE)).unwrap();
+    pvt_client.send_router_command(PRIVATE_DOMAIN, "register", PRIVATE_SERVICE).unwrap();
 
-    // Register private service with the private router
-    let mut tmsg = TransportMessage::new(PRIVATE_ROUTER, pvt_bus.address().full(), "router-thread");
-    tmsg.set_router_command("register");
-    tmsg.set_router_class(PRIVATE_SERVICE);
+    conf2.bus_config_mut().set_domain(PUBLIC_DOMAIN);
 
-    pvt_bus.send(&tmsg).unwrap();
+    let mut pub_client = Client::new(conf2).unwrap();
 
-    // Register private service with the public router
-    let mut tmsg = TransportMessage::new(PUBLIC_ROUTER, pvt_bus.address().full(), "router-thread");
-    tmsg.set_router_command("register");
-    tmsg.set_router_class(PRIVATE_SERVICE);
+    pub_client.send_router_command(PRIVATE_DOMAIN, "register", PUBLIC_SERVICE).unwrap();
+    pub_client.send_router_command(PUBLIC_DOMAIN, "register", PUBLIC_SERVICE).unwrap();
 
-    pvt_bus.send(&tmsg).unwrap();
 
-    // Register private service with the public router
-    /*
-    let mut tmsg = TransportMessage::new(PUBLIC_ROUTER, pvt_bus.address().full(), "router-thread");
-    tmsg.set_router_command("register");
-    tmsg.set_router_class(PRIVATE_SERVICE);
-
-    pvt_bus.send(&tmsg).unwrap();
-    */
+    pvt_client.send_router_command(PRIVATE_DOMAIN, "unregister", PRIVATE_SERVICE).unwrap();
+    pub_client.send_router_command(PRIVATE_DOMAIN, "unregister", PUBLIC_SERVICE).unwrap();
+    pub_client.send_router_command(PUBLIC_DOMAIN, "unregister", PUBLIC_SERVICE).unwrap();
 }
 
 

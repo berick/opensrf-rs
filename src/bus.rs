@@ -30,7 +30,7 @@ impl Bus {
         let info = Bus::connection_info(bus_config)?;
         let domain = Bus::host_from_connection_info(&info);
 
-        debug!("Bus::new() connecting to {:?}", info);
+        trace!("Bus::new() connecting to {:?}", info);
 
         let client = redis::Client::open(info)?;
 
