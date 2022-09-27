@@ -24,9 +24,7 @@ impl Bus {
         let info = Bus::connection_info(bus_config)?;
         let domain = Bus::host_from_connection_info(&info);
 
-        let info_str = format!("{info:?}");
-
-        trace!("Bus::new() connecting to {info_str}");
+        trace!("Bus::new() connecting to {:?}", info);
 
         let client = match redis::Client::open(info) {
             Ok(c) => c,
@@ -38,7 +36,7 @@ impl Bus {
         let connection = match client.get_connection() {
             Ok(c) => c,
             Err(e) => {
-                return Err(format!("Cannot connect using {info_str} : {e}"));
+                return Err(format!("Cannot connect: {e}"));
             }
         };
 
