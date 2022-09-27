@@ -1,6 +1,6 @@
 use super::addr::BusAddress;
 use super::bus::Bus;
-use super::conf::{BusConfig, ClientConfig};
+use super::conf::ClientConfig;
 use super::message::Message;
 use super::message::MessageStatus;
 use super::message::MessageType;
@@ -92,7 +92,7 @@ impl Client<'_> {
     }
 
     fn add_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, error::Error> {
-        let mut bus_conf = self.config.bus_config().clone();
+        let bus_conf = self.config.bus_config().clone();
         let bus = Bus::new(&bus_conf, self.for_service.as_deref())?;
 
         info!("Opened connection to new domain: {}", domain);
@@ -358,12 +358,11 @@ impl Client<'_> {
             req,
         );
 
-        let mut sent = false;
         if ses.remote_addr().is_client() {
             // We are in a connected session.
             // Our remote end could be on a different domain.
             let domain = ses.remote_addr().domain().unwrap().to_string();
-            let mut bus = self.get_connection(&domain)?;
+            let bus = self.get_connection(&domain)?;
             bus.send(&tm)?;
         } else {
             self.bus.send(&tm)?;

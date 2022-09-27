@@ -2,13 +2,10 @@ use super::addr::BusAddress;
 use super::conf::BusConfig;
 use super::error;
 use super::message::TransportMessage;
-use super::util;
-use gethostname::gethostname;
 use log::{debug, error, trace};
 use redis::streams::{StreamId, StreamKey, StreamMaxlen, StreamReadOptions, StreamReadReply};
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo, Value};
 use std::fmt;
-use std::process;
 use std::time;
 
 const DEFAULT_REDIS_PORT: u16 = 6379;

@@ -13,7 +13,7 @@ fn main() {
 
     client.connect(&ses).expect("Could not connect to service");
 
-    let params = vec![json::from("Hello"), json::from("World")];
+    let params = vec!["Hello", "World"];
     let params2 = params.clone();
 
     let req = client
@@ -52,7 +52,7 @@ fn main() {
 
     client.connect(&ses).unwrap();
 
-    let params = vec![json::from(1)];
+    let params = vec![1];
     let req = client
         .request(&ses, "open-ils.storage.direct.actor.user.retrieve", params)
         .unwrap();
