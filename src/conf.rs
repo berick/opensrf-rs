@@ -1,4 +1,3 @@
-use super::error::Error;
 use std::fs;
 use yaml_rust::yaml;
 use yaml_rust::YamlLoader;
@@ -106,14 +105,14 @@ impl ClientConfig {
     }
 
     /// Load configuration from a YAML file
-    pub fn load_file(&mut self, config_file: &str) -> Result<(), Error> {
+    pub fn load_file(&mut self, config_file: &str) -> Result<(), String> {
         let yaml_text = match fs::read_to_string(config_file) {
             Ok(t) => t,
             Err(e) => {
-                return Err(Error::ClientConfigError(format!(
+                return Err(format!(
                     "Error reading configuration file: file='{}' {:?}",
                     config_file, e
-                )));
+                ));
             }
         };
 
@@ -121,14 +120,14 @@ impl ClientConfig {
     }
 
     /// Load configuration from a YAML string
-    pub fn load_string(&mut self, yaml_text: &str) -> Result<(), Error> {
+    pub fn load_string(&mut self, yaml_text: &str) -> Result<(), String> {
         let yaml_docs = match YamlLoader::load_from_str(yaml_text) {
             Ok(docs) => docs,
             Err(e) => {
-                return Err(Error::ClientConfigError(format!(
+                return Err(format!(
                     "Error parsing configuration file: {:?}",
                     e
-                )));
+                ));
             }
         };
 
@@ -140,25 +139,20 @@ impl ClientConfig {
         Ok(())
     }
 
-    fn set_logging_config(&mut self, yaml: &yaml::Yaml) -> Result<(), Error> {
+    fn set_logging_config(&mut self, yaml: &yaml::Yaml) -> Result<(), String> {
         if let Some(filename) = yaml["logging"]["log4rs_config"].as_str() {
             if let Err(err) = log4rs::init_file(filename, Default::default()) {
                 eprintln!("Error loading log4rs config: {}", err);
-                return Err(Error::ClientConfigError(format!(
-                    "Error loading log4rs config: {}",
-                    err
-                )));
+                return Err(format!("Error loading log4rs config: {}", err));
             }
         } else {
-            return Err(Error::ClientConfigError(format!(
-                "No log4rs configuration file set"
-            )));
+            return Err(format!("No log4rs configuration file set"));
         };
 
         Ok(())
     }
 
-    fn set_bus_config(&mut self, yaml: &yaml::Yaml) -> Result<(), Error> {
+    fn set_bus_config(&mut self, yaml: &yaml::Yaml) -> Result<(), String> {
         if let Some(p) = yaml["message_bus"]["port"].as_i64() {
             self.bus_config.set_port(p as u16);
         };

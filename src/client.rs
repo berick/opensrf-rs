@@ -52,17 +52,17 @@ pub struct Client<'a> {
 }
 
 impl Client<'_> {
-    pub fn new(config: ClientConfig) -> Result<Self, error::Error> {
+    pub fn new(config: ClientConfig) -> Result<Self, String> {
         let bus = Bus::new(config.bus_config(), None)?;
         Client::new_common(config, bus)
     }
 
-    pub fn new_for_service(config: ClientConfig, service: &str) -> Result<Self, error::Error> {
+    pub fn new_for_service(config: ClientConfig, service: &str) -> Result<Self, String> {
         let bus = Bus::new(config.bus_config(), Some(service))?;
         Client::new_common(config, bus)
     }
 
-    fn new_common(config: ClientConfig, bus: Bus) -> Result<Self, error::Error> {
+    fn new_common(config: ClientConfig, bus: Bus) -> Result<Self, String> {
         Ok(Client {
             config,
             bus: bus,
@@ -78,7 +78,7 @@ impl Client<'_> {
         &self.bus
     }
 
-    pub fn get_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, error::Error> {
+    pub fn get_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, String> {
         // Our primary bus address always has a domain.
         if domain.eq(self.bus.address().domain().unwrap()) {
             Ok(&mut self.bus)
@@ -91,7 +91,7 @@ impl Client<'_> {
         }
     }
 
-    fn add_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, error::Error> {
+    fn add_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, String> {
         let bus_conf = self.config.bus_config().clone();
         let bus = Bus::new(&bus_conf, self.for_service.as_deref())?;
 
@@ -101,11 +101,11 @@ impl Client<'_> {
         self.get_connection(domain)
     }
 
-    pub fn clear_bus(&mut self) -> Result<(), error::Error> {
+    pub fn clear_bus(&mut self) -> Result<(), String> {
         self.bus.clear_stream()
     }
 
-    pub fn disconnect_bus(&mut self) -> Result<(), error::Error> {
+    pub fn disconnect_bus(&mut self) -> Result<(), String> {
         self.bus.disconnect()
     }
 
@@ -158,7 +158,7 @@ impl Client<'_> {
         &mut self,
         thread: &str,
         mut timeout: i32,
-    ) -> Result<Option<TransportMessage>, error::Error> {
+    ) -> Result<Option<TransportMessage>, String> {
         loop {
             let start = time::SystemTime::now();
 
@@ -193,7 +193,7 @@ impl Client<'_> {
         &mut self,
         thread: &str,
         timeout: i32,
-    ) -> Result<Option<TransportMessage>, error::Error> {
+    ) -> Result<Option<TransportMessage>, String> {
         trace!("recv_session() timeout={} thread={}", timeout, thread);
 
         let tm = match self.recv_session_from_backlog(thread) {
@@ -225,7 +225,7 @@ impl Client<'_> {
     }
 
     /// Establish a connected session with a remote service.
-    pub fn connect(&mut self, client_ses: &ClientSession) -> Result<(), error::Error> {
+    pub fn connect(&mut self, client_ses: &ClientSession) -> Result<(), String> {
         trace!("Connecting {}", client_ses);
 
         let my_addr = self.bus.address().full().to_string(); // mut borrow
@@ -277,11 +277,11 @@ impl Client<'_> {
             timeout -= start.elapsed().unwrap().as_secs() as i32;
         }
 
-        Err(error::Error::ConnectTimeoutError)
+        Err(format!("CONNECT timed out"))
     }
 
     /// Disconnect a connected session.
-    pub fn disconnect(&mut self, client_ses: &ClientSession) -> Result<(), error::Error> {
+    pub fn disconnect(&mut self, client_ses: &ClientSession) -> Result<(), String> {
         if !self.ses(client_ses.thread()).connected {
             return Ok(());
         }
@@ -323,7 +323,7 @@ impl Client<'_> {
         client_ses: &ClientSession,
         method: &str,
         params: Vec<T>,
-    ) -> Result<ClientRequest, error::Error>
+    ) -> Result<ClientRequest, String>
     where
         T: Into<JsonValue>,
     {
@@ -412,7 +412,7 @@ impl Client<'_> {
         &mut self,
         req: &ClientRequest,
         timeout: i32,
-    ) -> Result<Option<JsonValue>, error::Error> {
+    ) -> Result<Option<JsonValue>, String> {
         match self.recv(req, timeout)? {
             Some(resp) => {
                 if let Some(r) = self.req_mut(req) {
@@ -434,8 +434,8 @@ impl Client<'_> {
         &mut self,
         req: &ClientRequest,
         timeout: i32,
-    ) -> Result<Option<JsonValue>, error::Error> {
-        let mut resp: Result<Option<JsonValue>, error::Error> = Ok(None);
+    ) -> Result<Option<JsonValue>, String> {
+        let mut resp: Result<Option<JsonValue>, String> = Ok(None);
 
         if self.complete(req) {
             return resp;
@@ -539,7 +539,7 @@ impl Client<'_> {
         &mut self,
         req: &ClientRequest,
         msg: &message::Message,
-    ) -> Result<UnpackedReply, error::Error> {
+    ) -> Result<UnpackedReply, String> {
         trace!("handle_reply() {} mtype={}", req, msg.mtype());
 
         if let Payload::Result(resp) = msg.payload() {
@@ -574,19 +574,20 @@ impl Client<'_> {
                 MessageStatus::Timeout => {
                     ses.reset();
                     warn!("Stateful session ended by server on keepalive timeout");
-                    return Err(error::Error::RequestTimeoutError);
+                    return Err(format!("Request timed out"));
                 }
                 MessageStatus::NotFound => {
                     ses.reset();
                     if let Some(m) = req.method() {
-                        warn!("Method Not Found: {}", m);
+                        return Err(format!("Method not found: {m}"));
+                    } else {
+                        // Should never get here
+                        return Err(format!("Method not found error returned"));
                     }
-                    return Err(error::Error::MethodNotFoundError);
                 }
                 _ => {
                     ses.reset();
-                    warn!("Unexpected response status {}", stat.status());
-                    return Err(error::Error::BadResponseError);
+                    return Err(format!("Unexpected response status {}", stat.status()));
                 }
             }
 
@@ -601,7 +602,7 @@ impl Client<'_> {
 
         ses.reset();
 
-        return Err(error::Error::BadResponseError);
+        return Err(format!("Unexpected response"));
     }
 
     /// Returns true if the provided request is marked as complete
@@ -619,7 +620,7 @@ impl Client<'_> {
         domain: &str,
         rtr_command: &str,
         rtr_class: &str,
-    ) -> Result<(), error::Error> {
+    ) -> Result<(), String> {
         let addr = BusAddress::new_for_router(domain);
 
         // Always use the address of our primary Bus

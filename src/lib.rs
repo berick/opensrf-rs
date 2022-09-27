@@ -3,7 +3,6 @@ pub mod bus;
 pub mod classified;
 pub mod client;
 pub mod conf;
-pub mod error;
 pub mod message;
 pub mod session;
 pub mod util;

@@ -1,6 +1,5 @@
 use super::addr::BusAddress;
 use super::conf::BusConfig;
-use super::error;
 use super::message::TransportMessage;
 use log::{debug, error, trace};
 use redis::streams::{StreamId, StreamKey, StreamMaxlen, StreamReadOptions, StreamReadReply};
@@ -20,18 +19,26 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(bus_config: &BusConfig, for_service: Option<&str>) -> Result<Self, error::Error> {
+
+    pub fn new(bus_config: &BusConfig, for_service: Option<&str>) -> Result<Self, String> {
         let info = Bus::connection_info(bus_config)?;
         let domain = Bus::host_from_connection_info(&info);
 
-        trace!("Bus::new() connecting to {:?}", info);
+        let info_str = format!("{info:?}");
 
-        let client = redis::Client::open(info)?;
+        trace!("Bus::new() connecting to {info_str}");
+
+        let client = match redis::Client::open(info) {
+            Ok(c) => c,
+            Err(e) => {
+                return Err(format!("Error opening Redis connection: {e}"));
+            }
+        };
 
         let connection = match client.get_connection() {
             Ok(c) => c,
             Err(e) => {
-                return Err(error::Error::BusError(e));
+                return Err(format!("Cannot connect using {info_str} : {e}"));
             }
         };
 
@@ -48,7 +55,7 @@ impl Bus {
         Ok(bus)
     }
 
-    pub fn setup_stream(&mut self, name: Option<&str>) -> Result<(), error::Error> {
+    pub fn setup_stream(&mut self, name: Option<&str>) -> Result<(), String> {
         let sname = match name {
             Some(n) => n.to_string(),
             None => self.address().full().to_string(),
@@ -77,7 +84,7 @@ impl Bus {
     }
 
     /// Generates the Redis connection Info
-    fn connection_info(bus_config: &BusConfig) -> Result<ConnectionInfo, error::Error> {
+    fn connection_info(bus_config: &BusConfig) -> Result<ConnectionInfo, String> {
         // Build the connection info by hand because it gives us more
         // flexibility/control than compiling a URL string.
 
@@ -109,9 +116,7 @@ impl Bus {
 
             con_addr = ConnectionAddr::Tcp(String::from(domain), port);
         } else {
-            return Err(error::Error::ClientConfigError(format!(
-                "Domain Info Required"
-            )));
+            return Err(format!("Domain Info Required in Configuration"));
         }
 
         Ok(ConnectionInfo {
@@ -140,7 +145,7 @@ impl Bus {
         &mut self,
         timeout: i32,
         stream: Option<&str>,
-    ) -> Result<Option<String>, error::Error> {
+    ) -> Result<Option<String>, String> {
         let sname = match stream {
             Some(s) => s.to_string(),
             None => self.address().full().to_string(),
@@ -179,7 +184,7 @@ impl Bus {
                         return Ok(None);
                     }
                     _ => {
-                        return Err(error::Error::BusError(e));
+                        return Err(format!("XREAD error: {e}"));
                     }
                 },
             };
@@ -217,7 +222,7 @@ impl Bus {
         &mut self,
         timeout: i32,
         stream: Option<&str>,
-    ) -> Result<Option<json::JsonValue>, error::Error> {
+    ) -> Result<Option<json::JsonValue>, String> {
         let json_string = match self.recv_one_chunk(timeout, stream)? {
             Some(s) => s,
             None => {
@@ -227,11 +232,8 @@ impl Bus {
 
         match json::parse(&json_string) {
             Ok(json_val) => Ok(Some(json_val)),
-
-            // Log the error and bubble it up to the caller.
             Err(err_msg) => {
-                error!("Error parsing JSON: {:?}", err_msg);
-                return Err(super::error::Error::JsonError(err_msg));
+                return Err(format!("Error parsing JSON: {:?}", err_msg));
             }
         }
     }
@@ -249,7 +251,7 @@ impl Bus {
         &mut self,
         timeout: i32,
         stream: Option<&str>,
-    ) -> Result<Option<json::JsonValue>, error::Error> {
+    ) -> Result<Option<json::JsonValue>, String> {
         let mut option: Option<json::JsonValue>;
 
         if timeout == 0 {
@@ -293,7 +295,7 @@ impl Bus {
         &mut self,
         timeout: i32,
         stream: Option<&str>,
-    ) -> Result<Option<TransportMessage>, error::Error> {
+    ) -> Result<Option<TransportMessage>, String> {
         let json_op = self.recv_json_value(timeout, stream)?;
 
         match json_op {
@@ -303,13 +305,13 @@ impl Bus {
     }
 
     /// Sends a TransportMessage to the "to" value in the message.
-    pub fn send(&mut self, msg: &TransportMessage) -> Result<(), error::Error> {
+    pub fn send(&mut self, msg: &TransportMessage) -> Result<(), String> {
         self.send_to(msg, msg.to())
     }
 
     /// Sends a TransportMessage to the specified BusAddress, regardless
     /// of what value is in the msg.to() field.
-    pub fn send_to(&mut self, msg: &TransportMessage, recipient: &str) -> Result<(), error::Error> {
+    pub fn send_to(&mut self, msg: &TransportMessage, recipient: &str) -> Result<(), String> {
         let json_str = msg.to_json_value().dump();
 
         trace!("send() writing chunk to={}: {}", recipient, json_str);
@@ -321,31 +323,31 @@ impl Bus {
                 .xadd_maxlen(recipient, maxlen, "*", &[("message", json_str)]);
 
         if let Err(e) = res {
-            return Err(error::Error::BusError(e));
+            return Err(format!("Error in send(): {e}"));
         };
 
         Ok(())
     }
 
-    pub fn clear_stream(&mut self) -> Result<(), error::Error> {
+    pub fn clear_stream(&mut self) -> Result<(), String> {
         let sname = self.address().full().to_string();
         let maxlen = StreamMaxlen::Equals(0);
         let res: Result<i32, _> = self.connection().xtrim(&sname, maxlen);
 
         if let Err(e) = res {
-            return Err(error::Error::BusError(e));
+            return Err(format!("Error in clear_stream(): {e}"));
         }
 
         Ok(())
     }
 
     /// Removes our stream, which also removes our consumer group
-    pub fn delete_stream(&mut self) -> Result<(), error::Error> {
+    pub fn delete_stream(&mut self) -> Result<(), String> {
         let sname = self.address().full().to_string();
         let res: Result<i32, _> = self.connection().del(&sname);
 
         if let Err(e) = res {
-            return Err(error::Error::BusError(e));
+            return Err(format!("Error in delete_stream(): {e}"));
         }
 
         Ok(())
@@ -353,7 +355,7 @@ impl Bus {
 
     // Rust redis has no disconnect, but calling a method named
     // disconnect will makes sense.
-    pub fn disconnect(&mut self) -> Result<(), error::Error> {
+    pub fn disconnect(&mut self) -> Result<(), String> {
         // Avoid deleting the stream for opensrf:service: connections
         // since those are shared.
         if self.address().is_client() {
