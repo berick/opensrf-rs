@@ -20,7 +20,7 @@ pub struct Bus {
 
 impl Bus {
 
-    pub fn new(bus_config: &BusConfig, for_service: Option<&str>) -> Result<Self, String> {
+    pub fn new(bus_config: &BusConfig) -> Result<Self, String> {
         let info = Bus::connection_info(bus_config)?;
         let domain = Bus::host_from_connection_info(&info);
 
@@ -40,7 +40,7 @@ impl Bus {
             }
         };
 
-        let addr = BusAddress::new_for_client(&domain, for_service);
+        let addr = BusAddress::new_for_client(&domain);
 
         let mut bus = Bus {
             domain,

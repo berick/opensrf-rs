@@ -1,4 +1,4 @@
-use opensrf::client::Client;
+//use opensrf::client::Client;
 use opensrf::conf::ClientConfig;
 
 fn main() {
@@ -7,6 +7,7 @@ fn main() {
     conf.load_file("conf/opensrf_client.yml")
         .expect("Cannot load config file");
 
+    /*
     let mut client = Client::new(conf).expect("Could not build client");
 
     let ses = client.session("opensrf.settings");
@@ -74,4 +75,5 @@ fn main() {
     client.disconnect(&ses).unwrap();
     client.cleanup(&ses);
     client.disconnect_bus().expect("bus disconnected");
+    */
 }

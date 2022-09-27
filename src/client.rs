@@ -15,6 +15,8 @@ use log::{error, info, trace, warn};
 use std::collections::HashMap;
 use std::fmt;
 use std::time;
+use std::cell::RefCell;
+use std::rc::{Rc, Weak};
 
 const CONNECT_TIMEOUT: i32 = 10;
 
@@ -39,11 +41,6 @@ pub struct Client<'a> {
 
     sessions: HashMap<String, Session>,
 
-    /// Contains a value if this client is working on behalf of a
-    /// running service.  Otherwise, it's assume to be a standalone
-    /// OpenSRF client.
-    for_service: Option<String>,
-
     /// Queue of receieved transport messages that have yet to be
     /// processed by any sessions.
     transport_backlog: Vec<message::TransportMessage>,
@@ -52,17 +49,9 @@ pub struct Client<'a> {
 }
 
 impl Client<'_> {
+
     pub fn new(config: ClientConfig) -> Result<Self, String> {
-        let bus = Bus::new(config.bus_config(), None)?;
-        Client::new_common(config, bus)
-    }
-
-    pub fn new_for_service(config: ClientConfig, service: &str) -> Result<Self, String> {
-        let bus = Bus::new(config.bus_config(), Some(service))?;
-        Client::new_common(config, bus)
-    }
-
-    fn new_common(config: ClientConfig, bus: Bus) -> Result<Self, String> {
+        let bus = Bus::new(config.bus_config())?;
         Ok(Client {
             config,
             bus: bus,
@@ -70,7 +59,6 @@ impl Client<'_> {
             transport_backlog: Vec::new(),
             remote_bus_map: HashMap::new(),
             serializer: None,
-            for_service: None,
         })
     }
 
@@ -93,7 +81,7 @@ impl Client<'_> {
 
     fn add_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, String> {
         let bus_conf = self.config.bus_config().clone();
-        let bus = Bus::new(&bus_conf, self.for_service.as_deref())?;
+        let bus = Bus::new(&bus_conf)?;
 
         info!("Opened connection to new domain: {}", domain);
 
@@ -704,3 +692,4 @@ impl fmt::Display for ClientRequest {
         )
     }
 }
+

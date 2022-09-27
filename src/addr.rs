@@ -39,21 +39,15 @@ impl fmt::Display for BusAddress {
 }
 
 impl BusAddress {
+
     /// Create a new bus address for a client.
-    ///
-    /// If service is set, this is a client address for a service.
-    pub fn new_for_client(domain: &str, service: Option<&str>) -> Self {
-        let maybe_service = match service {
-            Some(s) => format!("{}:", s),
-            None => String::from(""),
-        };
+    pub fn new_for_client(domain: &str) -> Self {
 
         let full = format!(
-            "{}:client:{}:{}:{}{}:{}",
+            "{}:client:{}:{}:{}:{}",
             BUS_ADDR_NAMESPACE,
             &domain,
             &gethostname().into_string().unwrap(),
-            &maybe_service,
             process::id(),
             &util::random_number(8)
         );
