@@ -508,7 +508,10 @@ impl Client {
         self.get_connection(domain)
     }
 
-    pub fn clear_bus(&mut self) -> Result<(), String> {
+    /// Discard any unprocessed messages from our backlog and clear our
+    /// stream of pending messages on the bus.
+    pub fn clear(&mut self) -> Result<(), String> {
+        self.backlog.clear();
         self.bus.clear_stream()
     }
 
@@ -549,6 +552,28 @@ impl Client {
             // Loop back around and see if we can pull a transport
             // message from the backlog matching the requested thread.
         }
+    }
+
+    pub fn send_router_command(
+        &mut self,
+        domain: &str,
+        router_command: &str,
+        router_class: &str,
+    ) -> Result<(), String> {
+        let addr = BusAddress::new_for_router(domain);
+
+        // Always use the address of our primary Bus
+        let mut tmsg = message::TransportMessage::new(
+            addr.full(),
+            self.bus.address().full(),
+            &util::random_number(16),
+        );
+
+        tmsg.set_router_command(router_command);
+        tmsg.set_router_class(router_class);
+
+        let bus = self.get_connection(domain)?;
+        bus.send(&tmsg)
     }
 }
 
