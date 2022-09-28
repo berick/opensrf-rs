@@ -1,11 +1,15 @@
+use std::fmt;
 use json::JsonValue;
 use super::*;
+use super::addr::BusAddress;
 use super::message::Payload;
 use super::message::MessageStatus;
-use log::{trace, info};
+use log::{trace, debug, info, warn};
 use std::collections::HashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+const CONNECT_TIMEOUT: i32 = 10;
 
 pub struct Response {
     value: Option<JsonValue>,
@@ -68,11 +72,11 @@ pub struct Session {
     service: String,
 
     /// Bus ID for our service.
-    service_addr: addr::BusAddress,
+    service_addr: BusAddress,
 
     /// Worker-specific bus address for our session.
     /// Only set once we are communicating with a specific worker.
-    remote_addr: Option<addr::BusAddress>,
+    remote_addr: Option<BusAddress>,
 
     /// Each new Request within a Session gets a new thread_trace.
     /// Replies have the same thread_trace as their request.
@@ -85,6 +89,12 @@ pub struct Session {
     backlog: Vec<message::Message>,
 }
 
+impl fmt::Display for Session {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Session({} {})", &self.service, &self.thread)
+    }
+}
+
 impl Session {
 
     pub fn new(client: Rc<RefCell<Client>>, service: &str) -> SessionHandle {
@@ -94,32 +104,41 @@ impl Session {
             session_type: SessionType::Client,
             service: String::from(service),
             remote_addr: None,
-            service_addr: addr::BusAddress::new_for_service(&service),
+            service_addr: BusAddress::new_for_service(&service),
             connected: false,
             last_thread_trace: 0,
             backlog: Vec::new(),
             thread: util::random_number(16),
         };
 
-        trace!("Creating session service={} thread={}", service, ses.thread);
+        trace!("Created new session {ses}");
 
         SessionHandle {
             session: Rc::new(RefCell::new(ses))
         }
     }
 
+    pub fn service(&self) -> &str {
+        &self.service
+    }
+
     pub fn thread(&self) -> &str {
         &self.thread
     }
 
+    pub fn connected(&self) -> bool {
+        self.connected
+    }
+
     pub fn reset(&mut self) {
+        trace!("{self} resetting...");
         self.remote_addr = None;
         self.connected = false;
     }
 
     /// Returns the address of the remote end if we are connected.  Otherwise,
     /// returns the default remote address of the service we are talking to.
-    pub fn remote_addr(&self) -> &addr::BusAddress {
+    pub fn remote_addr(&self) -> &BusAddress {
         if self.connected {
             if let Some(ref ra) = self.remote_addr {
                 return ra;
@@ -131,12 +150,10 @@ impl Session {
 
     fn recv_from_backlog(&mut self, thread_trace: usize) -> Option<message::Message> {
 
-        if let Some(index) = self
-            .backlog
-            .iter()
-            .position(|m| m.thread_trace() == thread_trace)
-        {
-            trace!("Found a stashed reply for thread_trace {}", thread_trace);
+        if let Some(index) = self.backlog.iter()
+            .position(|m| m.thread_trace() == thread_trace) {
+
+            trace!("{self} found a reply in the backlog for request {thread_trace}");
 
             Some(self.backlog.remove(index))
 
@@ -165,6 +182,14 @@ impl Session {
             if let Some(tmsg) =
                 self.client.borrow_mut().recv_session(&mut timer, self.thread())? {
                 // Toss the messages onto our backlog as we receive them.
+
+                if self.remote_addr().full() != tmsg.from() {
+                    // Response from a specific worker
+                    self.remote_addr = Some(BusAddress::new_from_string(tmsg.from())?);
+                }
+
+                trace!("{self} pulled messages from the data bus");
+
                 for msg in tmsg.body() {
                     self.backlog.push(msg.to_owned());
                 }
@@ -191,60 +216,75 @@ impl Session {
 
         }
 
-        let err_msg: String;
+        let err_msg;
+        let trace = msg.thread_trace();
 
         if let Payload::Status(stat) = msg.payload() {
-            match stat.status() {
-                MessageStatus::Ok => {
-                    trace!("Marking request {} as complete", msg.thread_trace());
-                    self.connected = true;
-                    return Ok(None);
-                }
-                MessageStatus::Continue => {
-                    timer.reset();
-                    return Ok(None);
-                }
-                MessageStatus::Complete => {
-                    return Ok(Some(Response { value: None, complete: true }));
-                }
-                MessageStatus::Timeout => {
-                    err_msg = format!("Request timed out");
-                }
-                MessageStatus::NotFound => {
-                    err_msg = format!("Method not found: {stat:?}");
-                }
-                _ => {
-                    err_msg = format!("Unexpected response status {stat:?}");
-                }
+            match self.unpack_status_message(trace, timer, stat.status()) {
+                Ok(v) => { return Ok(v); }
+                Err(e) => err_msg = e,
             }
         } else {
-            err_msg = format!("Unexpected response: {msg:?}");
+            err_msg =
+                format!("{self} unexpected response for request {trace}: {msg:?}");
         }
 
         self.reset();
 
         return Err(err_msg);
     }
-}
 
-pub struct SessionHandle {
-    session: Rc<RefCell<Session>>,
-}
-
-impl SessionHandle {
-
-    pub fn request<T>(
+    fn unpack_status_message(
         &mut self,
-        method: &str,
-        params: Vec<T>,
-    ) -> Result<Request, String>
+        trace: usize,
+        timer: &mut util::Timer,
+        stat: &message::MessageStatus,
+    ) -> Result<Option<Response>, String> {
+
+        let err_msg;
+
+        match stat {
+            MessageStatus::Ok => {
+                trace!("{self} Marking self as connected");
+                self.connected = true;
+                return Ok(None);
+            }
+            MessageStatus::Continue => {
+                timer.reset();
+                return Ok(None);
+            }
+            MessageStatus::Complete => {
+                trace!("{self} request {trace} complete");
+                return Ok(Some(Response { value: None, complete: true }));
+            }
+            MessageStatus::Timeout => {
+                err_msg = format!("{self} request {trace} timed out");
+            }
+            MessageStatus::NotFound => {
+                err_msg = format!(
+                    "{self} method bot found for request {trace}: {stat:?}");
+            }
+            _ => {
+                err_msg = format!(
+                    "{self} unexpected status message for request {trace} {stat:?}");
+            }
+        }
+
+        Err(err_msg)
+    }
+
+    fn incr_thread_trace(&mut self) -> usize {
+        self.last_thread_trace += 1;
+        self.last_thread_trace
+    }
+
+    pub fn request<T>(&mut self, method: &str, params: Vec<T>) -> Result<usize, String>
     where
         T: Into<JsonValue>,
     {
+        debug!("{self} sending request {method}");
 
-        let mut ses = self.session.borrow_mut();
-        ses.last_thread_trace += 1;
-        let thread_trace = ses.last_thread_trace;
+        let trace = self.incr_thread_trace();
 
         let mut pvec = Vec::new();
         for p in params {
@@ -269,35 +309,138 @@ impl SessionHandle {
 
         */
 
-        let req = message::Message::new(message::MessageType::Request, thread_trace, payload);
+        let req = message::Message::new(message::MessageType::Request, trace, payload);
 
-        let mut client = ses.client.borrow_mut();
+        let mut client = self.client.borrow_mut();
 
         let tm = message::TransportMessage::new_with_body(
-            ses.remote_addr().full(),
+            self.remote_addr().full(),
             // All messages we send have a from address on our primary domain
             client.bus.address().full(),
-            ses.thread(),
+            self.thread(),
             req,
         );
 
         let mut bus: &mut bus::Bus = &mut client.bus;
 
-        if ses.remote_addr().is_client() {
+        if self.remote_addr().is_client() {
             // We are in a connected session.
             // Our remote end could be on a different domain.
-            let domain = ses.remote_addr().domain().unwrap().to_string();
+            let domain = self.remote_addr().domain().unwrap().to_string();
             bus = client.get_connection(&domain)?;
         }
 
         bus.send(&tm)?;
 
+        Ok(trace)
+    }
+
+    /// Establish a connected session with a remote service.
+    pub fn connect(&mut self) -> Result<(), String> {
+
+        if self.connected() {
+            warn!("{self} is already connected");
+            return Ok(())
+        }
+
+        debug!("{self} sending CONNECT");
+
+        let trace = self.incr_thread_trace();
+
+        let msg = message::Message::new(
+            message::MessageType::Connect,
+            trace,
+            message::Payload::NoPayload,
+        );
+
+        let tm = message::TransportMessage::new_with_body(
+            self.remote_addr().full(),
+            self.client.borrow().bus.address().full(),
+            self.thread(),
+            msg
+        );
+
+        // A CONNECT always comes first, so we always drop it onto our
+        // primary domain and let the router figure it out.
+        self.client.borrow_mut().bus.send(&tm)?;
+
+        self.recv(trace, CONNECT_TIMEOUT)?;
+
+        if self.connected {
+            Ok(())
+        } else {
+            self.reset();
+            Err(format!("CONNECT timed out"))
+        }
+    }
+
+    pub fn disconnect(&mut self) -> Result<(), String> {
+
+        if !self.connected() {
+            // Nothing to disconnect
+            return Ok(())
+        }
+
+        debug!("{self} sending DISCONNECT");
+
+        let trace = self.incr_thread_trace();
+
+        let msg = message::Message::new(
+            message::MessageType::Disconnect,
+            trace,
+            message::Payload::NoPayload,
+        );
+
+        let tm = message::TransportMessage::new_with_body(
+            self.remote_addr().full(),
+            self.client.borrow().bus.address().full(),
+            self.thread(),
+            msg,
+        );
+
+        if let Some(domain) = self.remote_addr().domain() {
+            // There should always be a domain in this context
+
+            let mut client = self.client.borrow_mut();
+
+            // We may be disconnecting from a remote domain.
+            let bus = client.get_connection(&domain)?;
+
+            bus.send(&tm)?;
+        }
+
+        // Fire and forget.  All done.
+
+        self.reset();
+
+        Ok(())
+    }
+}
+
+pub struct SessionHandle {
+    session: Rc<RefCell<Session>>,
+}
+
+impl SessionHandle {
+
+    pub fn request<T>(&mut self, method: &str, params: Vec<T>) -> Result<Request, String>
+    where
+        T: Into<JsonValue>,
+    {
         Ok(Request {
-            session: self.session.clone(),
             complete: false,
-            thread_trace,
+            session: self.session.clone(),
             method: method.to_string(),
+            thread_trace: self.session.borrow_mut().request(method, params)?,
         })
+    }
+
+    pub fn connect(&self) -> Result<(), String> {
+        self.session.borrow_mut().connect()
+    }
+
+    pub fn disconnect(&self) -> Result<(), String> {
+        self.session.borrow_mut().disconnect()
     }
 }
 

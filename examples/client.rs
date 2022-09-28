@@ -10,11 +10,15 @@ fn main() {
 
     let mut ses = client.session("opensrf.settings");
 
+    ses.connect();
+
     let mut req = ses.request("opensrf.system.echo", vec!["hello", "world"]).unwrap();
 
     while let Some(resp) = req.recv(10).unwrap() {
         println!("Response: {resp:?}");
     }
+
+    ses.disconnect();
 
     /*
     let mut client = Client::new(conf).expect("Could not build client");
