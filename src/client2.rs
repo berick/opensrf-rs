@@ -1,6 +1,7 @@
 use json;
 use super::*;
 use super::message::Payload;
+use super::message::MessageStatus;
 use log::{trace, info};
 use std::collections::HashMap;
 use std::cell::RefCell;
@@ -141,7 +142,10 @@ impl Session {
     }
 
 
-    pub fn recv(&mut self, thread_trace: usize, timeout: i32) -> Result<Option<Response>, String> {
+    pub fn recv(&mut self, thread_trace: usize,
+        timeout: i32) -> Result<Option<Response>, String> {
+
+        let mut timer = util::Timer::new(timeout);
 
         let msg = match self.recv_from_backlog(thread_trace) {
             Some(m) => m,
@@ -150,10 +154,11 @@ impl Session {
             }
         };
 
-        self.unpack_reply(msg)
+        self.unpack_reply(&mut timer, msg)
     }
 
-    fn unpack_reply(&mut self, msg: message::Message) -> Result<Option<Response>, String> {
+    fn unpack_reply(&mut self, timer: &mut util::Timer,
+        msg: message::Message) -> Result<Option<Response>, String> {
 
         if let Payload::Result(resp) = msg.payload() {
 
@@ -168,13 +173,41 @@ impl Session {
 
         }
 
-        Ok(Some(Response {
-            value: None,
-            complete: false,
-        }))
+        let mut err_msg: String;
+
+        if let Payload::Status(stat) = msg.payload() {
+            match stat.status() {
+                MessageStatus::Ok => {
+                    trace!("Marking request {} as complete", msg.thread_trace());
+                    self.connected = true;
+                    return Ok(None);
+                }
+                MessageStatus::Continue => {
+                    timer.reset();
+                    return Ok(None);
+                }
+                MessageStatus::Complete => {
+                    return Ok(Some(Response { value: None, complete: true }));
+                }
+                MessageStatus::Timeout => {
+                    err_msg = format!("Request timed out");
+                }
+                MessageStatus::NotFound => {
+                    err_msg = format!("Method not found: {stat:?}");
+                }
+                _ => {
+                    err_msg = format!("Unexpected response status {stat:?}");
+                }
+            }
+        } else {
+            err_msg = format!("Unexpected response: {msg:?}");
+        }
+
+        self.reset();
+
+        return Err(err_msg);
     }
 }
-
 
 
 struct SessionHandle {

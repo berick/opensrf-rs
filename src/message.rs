@@ -147,7 +147,7 @@ impl fmt::Display for MessageStatus {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Payload {
     Method(Method),
     Result(Result),
@@ -314,7 +314,7 @@ impl TransportMessage {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Message {
     mtype: MessageType,
     thread_trace: usize,
@@ -655,7 +655,7 @@ impl Status {
 }
 
 /// A single API request with method name and parameters.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Method {
     method: String,
     params: Vec<json::JsonValue>,
