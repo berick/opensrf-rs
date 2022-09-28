@@ -1,5 +1,6 @@
 use json;
 use rand::Rng;
+use std::time::Instant;
 
 /// Returns a string of random numbers of the requested length
 pub fn random_number(size: usize) -> String {
@@ -33,3 +34,31 @@ pub fn json_usize(value: &json::JsonValue) -> Option<usize> {
 
     None
 }
+
+pub struct Timer {
+    duration: i32,
+    start_time: Instant,
+}
+
+impl Timer {
+
+    pub fn new(duration: i32) -> Timer {
+        Timer {
+            duration,
+            start_time: Instant::now()
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.start_time = Instant::now();
+    }
+
+    pub fn remaining(&self) -> i32 {
+        self.duration - self.start_time.elapsed().as_secs() as i32
+    }
+
+    pub fn exceeded(&self) -> bool {
+        self.remaining() <= 0
+    }
+}
+

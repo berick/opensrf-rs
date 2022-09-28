@@ -1,19 +1,21 @@
 use json;
 use super::*;
+use super::message::Payload;
 use log::{trace, info};
 use std::collections::HashMap;
-use std::collections::VecDeque;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+struct Response {
+    value: Option<json::JsonValue>,
+    complete: bool,
+}
 
 struct Request {
     session: Rc<RefCell<Session>>,
     complete: bool,
     thread_trace: usize,
     method: String,
-    /// Replies pulled from the bus that have not yet been
-    /// returned to the caller.
-    replies: VecDeque<json::JsonValue>,
 }
 
 impl Request {
@@ -24,32 +26,21 @@ impl Request {
             method: method.to_string(),
             complete: false,
             thread_trace,
-            replies: VecDeque::new(),
         }
-    }
-
-    pub fn has_pending_replies(&self) -> bool {
-        !self.replies.is_empty()
-    }
-
-    /// Adds a response to the session backlog so it can
-    /// be recv()'d later.
-    pub fn add_pending_reply(&mut self, value: json::JsonValue) {
-        self.replies.push_back(value);
     }
 
     pub fn recv(&mut self, timeout: i32) -> Result<Option<json::JsonValue>, String> {
-        let mut resp: Result<Option<json::JsonValue>, String> = Ok(None);
 
-        if let Some(value) = self.replies.pop_front() {
-            return Ok(Some(value));
+        let response = self.session.borrow_mut().recv(self.thread_trace, timeout)?;
+
+        if let Some(r) = response {
+            if r.complete {
+                self.complete = true;
+            }
+            return Ok(r.value);
         }
 
-        if self.complete {
-            return resp;
-        }
-
-        resp
+        Ok(None)
     }
 }
 
@@ -88,7 +79,9 @@ struct Session {
     /// This is effectively a request ID.
     last_thread_trace: usize,
 
-    requests: HashMap<usize, Rc<RefCell<Request>>>,
+    /// Replies to this thread which have not yet been pulled by
+    /// any requests.
+    backlog: Vec<message::Message>,
 }
 
 impl Session {
@@ -103,8 +96,8 @@ impl Session {
             service_addr: addr::BusAddress::new_for_service(&service),
             connected: false,
             last_thread_trace: 0,
+            backlog: Vec::new(),
             thread: util::random_number(16),
-            requests: HashMap::new(),
         };
 
         trace!("Creating session service={} thread={}", service, ses.thread);
@@ -129,6 +122,56 @@ impl Session {
         }
 
         &self.service_addr
+    }
+
+    fn recv_from_backlog(&mut self, thread_trace: usize) -> Option<message::Message> {
+
+        if let Some(index) = self
+            .backlog
+            .iter()
+            .position(|m| m.thread_trace() == thread_trace)
+        {
+            trace!("Found a stashed reply for thread_trace {}", thread_trace);
+
+            Some(self.backlog.remove(index))
+
+        } else {
+            None
+        }
+    }
+
+
+    pub fn recv(&mut self, thread_trace: usize, timeout: i32) -> Result<Option<Response>, String> {
+
+        let msg = match self.recv_from_backlog(thread_trace) {
+            Some(m) => m,
+            _ => {
+                return Ok(None); // TODO from client
+            }
+        };
+
+        self.unpack_reply(msg)
+    }
+
+    fn unpack_reply(&mut self, msg: message::Message) -> Result<Option<Response>, String> {
+
+        if let Payload::Result(resp) = msg.payload() {
+
+            // TODO serializer
+
+            return Ok(Some(Response {
+                // We can to_owned() here because we are done with the
+                // container message.  We just need the content now.
+                value: Some(resp.content().to_owned()),
+                complete: false,
+            }));
+
+        }
+
+        Ok(Some(Response {
+            value: None,
+            complete: false,
+        }))
     }
 }
 
