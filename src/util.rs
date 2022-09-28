@@ -57,7 +57,7 @@ impl Timer {
         self.duration - self.start_time.elapsed().as_secs() as i32
     }
 
-    pub fn exceeded(&self) -> bool {
+    pub fn done(&self) -> bool {
         self.remaining() <= 0
     }
 }

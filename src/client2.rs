@@ -1,4 +1,4 @@
-use json;
+use json::JsonValue;
 use super::*;
 use super::message::Payload;
 use super::message::MessageStatus;
@@ -7,12 +7,12 @@ use std::collections::HashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-struct Response {
-    value: Option<json::JsonValue>,
+pub struct Response {
+    value: Option<JsonValue>,
     complete: bool,
 }
 
-struct Request {
+pub struct Request {
     session: Rc<RefCell<Session>>,
     complete: bool,
     thread_trace: usize,
@@ -30,7 +30,7 @@ impl Request {
         }
     }
 
-    pub fn recv(&mut self, timeout: i32) -> Result<Option<json::JsonValue>, String> {
+    pub fn recv(&mut self, timeout: i32) -> Result<Option<JsonValue>, String> {
 
         let response = self.session.borrow_mut().recv(self.thread_trace, timeout)?;
 
@@ -45,12 +45,12 @@ impl Request {
     }
 }
 
-enum SessionType {
+pub enum SessionType {
     Client,
     Server,
 }
 
-struct Session {
+pub struct Session {
     client: Rc<RefCell<Client>>,
 
     session_type: SessionType,
@@ -108,6 +108,10 @@ impl Session {
         }
     }
 
+    pub fn thread(&self) -> &str {
+        &self.thread
+    }
+
     pub fn reset(&mut self) {
         self.remote_addr = None;
         self.connected = false;
@@ -147,14 +151,28 @@ impl Session {
 
         let mut timer = util::Timer::new(timeout);
 
-        let msg = match self.recv_from_backlog(thread_trace) {
-            Some(m) => m,
-            _ => {
-                return Ok(None); // TODO from client
-            }
-        };
+        loop {
 
-        self.unpack_reply(&mut timer, msg)
+            if let Some(msg) = self.recv_from_backlog(thread_trace) {
+                return self.unpack_reply(&mut timer, msg);
+            }
+
+            if timer.done() {
+                // Nothing in the backlog and all out of time.
+                return Ok(None);
+            }
+
+            if let Some(tmsg) =
+                self.client.borrow_mut().recv_session(&mut timer, self.thread())? {
+                // Toss the messages onto our backlog as we receive them.
+                for msg in tmsg.body() {
+                    self.backlog.push(msg.to_owned());
+                }
+            }
+
+            // Loop back around and see if we can pull the message
+            // we want from our backlog.
+        }
     }
 
     fn unpack_reply(&mut self, timer: &mut util::Timer,
@@ -173,7 +191,7 @@ impl Session {
 
         }
 
-        let mut err_msg: String;
+        let err_msg: String;
 
         if let Payload::Status(stat) = msg.payload() {
             match stat.status() {
@@ -209,12 +227,82 @@ impl Session {
     }
 }
 
-
-struct SessionHandle {
+pub struct SessionHandle {
     session: Rc<RefCell<Session>>,
 }
 
-struct Client {
+impl SessionHandle {
+
+    pub fn request<T>(
+        &mut self,
+        method: &str,
+        params: Vec<T>,
+    ) -> Result<Request, String>
+    where
+        T: Into<JsonValue>,
+    {
+
+        let mut ses = self.session.borrow_mut();
+        ses.last_thread_trace += 1;
+        let thread_trace = ses.last_thread_trace;
+
+        let mut pvec = Vec::new();
+        for p in params {
+            // TODO serializer
+            pvec.push(json::from(p));
+        }
+        let payload = Payload::Method(message::Method::new(method, pvec));
+
+
+        /*
+        let payload;
+
+        if let Some(s) = self.serializer {
+            let mut packed_params = Vec::new();
+            for par in param_vec {
+                packed_params.push(s.pack(&par));
+            }
+            payload = Payload::Method(Method::new(method, packed_params));
+        } else {
+            payload = Payload::Method(Method::new(method, param_vec));
+        }
+
+        */
+
+        let req = message::Message::new(message::MessageType::Request, thread_trace, payload);
+
+        let mut client = ses.client.borrow_mut();
+
+        let tm = message::TransportMessage::new_with_body(
+            ses.remote_addr().full(),
+            // All messages we send have a from address on our primary domain
+            client.bus.address().full(),
+            ses.thread(),
+            req,
+        );
+
+        let mut bus: &mut bus::Bus = &mut client.bus;
+
+        if ses.remote_addr().is_client() {
+            // We are in a connected session.
+            // Our remote end could be on a different domain.
+            let domain = ses.remote_addr().domain().unwrap().to_string();
+            bus = client.get_connection(&domain)?;
+        }
+
+        bus.send(&tm)?;
+
+        Ok(Request {
+            session: self.session.clone(),
+            complete: false,
+            thread_trace,
+            method: method.to_string(),
+        })
+    }
+}
+
+
+pub struct Client {
     bus: bus::Bus,
 
     primary_domain: String,
@@ -226,7 +314,7 @@ struct Client {
 
     /// Queue of receieved transport messages that have yet to be
     /// processed by any sessions.
-    transport_backlog: Vec<message::TransportMessage>,
+    backlog: Vec<message::TransportMessage>,
 
     //pub serializer: Option<&'a dyn DataSerializer>,
 }
@@ -244,7 +332,7 @@ impl Client {
             config,
             bus: bus,
             primary_domain: domain.to_string(),
-            transport_backlog: Vec::new(),
+            backlog: Vec::new(),
             remote_bus_map: HashMap::new(),
             //serializer: None,
         };
@@ -284,9 +372,44 @@ impl Client {
     pub fn disconnect_bus(&mut self) -> Result<(), String> {
         self.bus.disconnect()
     }
+
+    /// Returns the first transport message pulled from the transport
+    /// message backlog that matches the provided thread.
+    fn recv_session_from_backlog(&mut self, thread: &str) -> Option<message::TransportMessage> {
+        if let Some(index) = self.backlog.iter().position(|tm| tm.thread() == thread) {
+            trace!("Found a backlog reply for thread {thread}");
+            Some(self.backlog.remove(index))
+        } else {
+            None
+        }
+    }
+
+    pub fn recv_session(&mut self, timer: &mut util::Timer,
+        thread: &str) -> Result<Option<message::TransportMessage>, String> {
+
+        loop {
+            if let Some(tm) = self.recv_session_from_backlog(thread) {
+                return Ok(Some(tm));
+            }
+
+            if timer.done() {
+                // Nothing in the backlog and all out of time.
+                return Ok(None);
+            }
+
+            // See what we can pull from the message bus
+
+            if let Some(tm) = self.bus.recv(timer.remaining(), None)? {
+                self.backlog.push(tm);
+            }
+
+            // Loop back around and see if we can pull a transport
+            // message from the backlog matching the requested thread.
+        }
+    }
 }
 
-struct ClientHandle {
+pub struct ClientHandle {
     client: Rc<RefCell<Client>>,
 }
 

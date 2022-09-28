@@ -1,11 +1,20 @@
-//use opensrf::client::Client;
+use opensrf::client2::Client;
 use opensrf::conf::ClientConfig;
 
 fn main() {
     let mut conf = ClientConfig::new();
 
-    conf.load_file("conf/opensrf_client.yml")
-        .expect("Cannot load config file");
+    conf.load_file("conf/opensrf_client.yml").unwrap();
+
+    let mut client = Client::new(conf).unwrap();
+
+    let mut ses = client.session("opensrf.settings");
+
+    let mut req = ses.request("opensrf.system.echo", vec!["hello", "world"]).unwrap();
+
+    while let Some(resp) = req.recv(10).unwrap() {
+        println!("Response: {resp:?}");
+    }
 
     /*
     let mut client = Client::new(conf).expect("Could not build client");
