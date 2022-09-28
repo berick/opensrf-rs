@@ -1,4 +1,4 @@
-use opensrf::client2::Client;
+use opensrf::client::Client;
 use opensrf::conf::ClientConfig;
 
 fn main() {

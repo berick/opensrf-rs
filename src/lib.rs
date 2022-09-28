@@ -4,7 +4,7 @@ pub mod classified;
 pub mod client;
 pub mod conf;
 pub mod message;
-//pub mod session;
+pub mod session;
 pub mod util;
 
 #[cfg(test)]
