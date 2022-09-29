@@ -26,6 +26,8 @@ fn main() -> Result<(), String> {
 
     let mut ses = client.session("opensrf.settings");
 
+    // Requests consume our params vec, so we need a new one
+    // for each request.
     let params = vec!["Hello", "World", "Pamplemousse"];
 
     for resp in ses.sendrecv(method, params)? {
