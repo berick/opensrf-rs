@@ -670,9 +670,7 @@ impl Router {
 }
 
 fn main() {
-    let mut conf = ClientConfig::new();
-
-    conf.load_file("conf/opensrf_client.yml").unwrap();
+    let conf = ClientConfig::from_file("conf/opensrf_client.yml").unwrap();
 
     let t1 = thread::spawn(|| {
         let mut router: Router =

@@ -2,9 +2,7 @@ use opensrf::client::Client;
 use opensrf::conf::ClientConfig;
 
 fn main() -> Result<(), String> {
-    let mut conf = ClientConfig::new();
-
-    conf.load_file("conf/opensrf_client.yml")?;
+    let conf = ClientConfig::from_file("conf/opensrf_client.yml")?;
 
     let mut client = Client::new(conf)?;
 

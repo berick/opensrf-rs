@@ -1,8 +1,12 @@
 use super::addr::BusAddress;
 use super::client::Client;
+use super::message::Message;
 use super::message::MessageStatus;
+use super::message::MessageType;
+use super::message::Method;
 use super::message::Payload;
-use super::*;
+use super::message::TransportMessage;
+use super::util;
 use json::JsonValue;
 use log::{debug, error, trace, warn};
 use std::cell::{Ref, RefCell, RefMut};
@@ -12,14 +16,21 @@ use std::rc::Rc;
 const CONNECT_TIMEOUT: i32 = 10;
 const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
 
+/// Response data propagated from a session to the calling Request.
 pub struct Response {
     value: Option<JsonValue>,
     complete: bool,
 }
 
+/// Models a single API call through which the caller can receive responses.
 pub struct Request {
+    /// Link to our session so we can ask it for bus data.
     session: Rc<RefCell<Session>>,
+
+    /// Have we received all of the replies yet?
     complete: bool,
+
+    /// Unique ID per thread/session.
     thread_trace: usize,
 }
 
@@ -32,6 +43,12 @@ impl Request {
         }
     }
 
+    /// Receive the next response to this Request
+    ///
+    /// timeout:
+    ///     <0 == wait indefinitely
+    ///      0 == do not wait/block
+    ///     >0 == wait up to this many seconds for a reply.
     pub fn recv(&mut self, timeout: i32) -> Result<Option<JsonValue>, String> {
         if self.complete {
             // If we are marked complete, it means we've read all the
@@ -59,6 +76,7 @@ pub enum SessionType {
 }
 
 pub struct Session {
+    /// Link to our Client so we can ask it to pull data from the Bus.
     client: Rc<RefCell<Client>>,
 
     /// Client or Server
@@ -68,6 +86,8 @@ pub struct Session {
     /// Each session is identified on the network by a random thread string.
     thread: String,
 
+    /// Have we successfully established a connection withour
+    /// destination service?
     connected: bool,
 
     /// Service name.
@@ -77,22 +97,23 @@ pub struct Session {
     /// For Servers, this is the name of the service we host.
     service: String,
 
-    /// Bus ID for our service.
+    /// Top-level bus address for our service.
     service_addr: BusAddress,
 
     /// Worker-specific bus address for our session.
-    /// Only set once we are communicating with a specific worker.
+    ///
+    /// Only set if we are connected directly to a remote worker.
     remote_addr: Option<BusAddress>,
 
+    /// Most recently used per-thread request id.
+    ///
     /// Each new Request within a Session gets a new thread_trace.
     /// Replies have the same thread_trace as their request.
-    ///
-    /// This is effectively a request ID.
     last_thread_trace: usize,
 
     /// Replies to this thread which have not yet been pulled by
     /// any requests.
-    backlog: Vec<message::Message>,
+    backlog: Vec<Message>,
 }
 
 impl fmt::Display for Session {
@@ -146,6 +167,7 @@ impl Session {
         trace!("{self} resetting...");
         self.remote_addr = None;
         self.connected = false;
+        self.backlog.clear();
     }
 
     /// Returns the address of the remote end if we are connected.  Otherwise,
@@ -160,7 +182,7 @@ impl Session {
         &self.service_addr
     }
 
-    fn recv_from_backlog(&mut self, thread_trace: usize) -> Option<message::Message> {
+    fn recv_from_backlog(&mut self, thread_trace: usize) -> Option<Message> {
         if let Some(index) = self
             .backlog
             .iter()
@@ -221,7 +243,7 @@ impl Session {
     fn unpack_reply(
         &mut self,
         timer: &mut util::Timer,
-        msg: message::Message,
+        msg: Message,
     ) -> Result<Option<Response>, String> {
         if let Payload::Result(resp) = msg.payload() {
             // .to_owned() because this message is about to get dropped.
@@ -259,7 +281,7 @@ impl Session {
         &mut self,
         trace: usize,
         timer: &mut util::Timer,
-        stat: &message::MessageStatus,
+        stat: &MessageStatus,
     ) -> Result<Option<Response>, String> {
         let err_msg;
 
@@ -299,6 +321,7 @@ impl Session {
         self.last_thread_trace
     }
 
+    /// Issue a new API call and return the thread_trace of the sent request.
     pub fn request<T>(&mut self, method: &str, params: Vec<T>) -> Result<usize, String>
     where
         T: Into<JsonValue>,
@@ -316,13 +339,13 @@ impl Session {
             pvec.push(jv);
         }
 
-        let payload = Payload::Method(message::Method::new(method, pvec));
+        let payload = Payload::Method(Method::new(method, pvec));
 
-        let req = message::Message::new(message::MessageType::Request, trace, payload);
+        let req = Message::new(MessageType::Request, trace, payload);
 
         let mut client = self.client_mut();
 
-        let tm = message::TransportMessage::new_with_body(
+        let tm = TransportMessage::new_with_body(
             self.remote_addr().full(),
             client.address(),
             self.thread(),
@@ -339,7 +362,7 @@ impl Session {
         Ok(trace)
     }
 
-    /// Establish a connected session with a remote service.
+    /// Establish a connected session with a remote worker.
     pub fn connect(&mut self) -> Result<(), String> {
         if self.connected() {
             warn!("{self} is already connected");
@@ -350,13 +373,9 @@ impl Session {
 
         let trace = self.incr_thread_trace();
 
-        let msg = message::Message::new(
-            message::MessageType::Connect,
-            trace,
-            message::Payload::NoPayload,
-        );
+        let msg = Message::new(MessageType::Connect, trace, Payload::NoPayload);
 
-        let tm = message::TransportMessage::new_with_body(
+        let tm = TransportMessage::new_with_body(
             self.remote_addr().full(),
             self.client().address(),
             self.thread(),
@@ -377,6 +396,9 @@ impl Session {
         }
     }
 
+    /// Send a DISCONNECT to our remote worker.
+    ///
+    /// Does not wait for any response.  NO-OP if not connected.
     pub fn disconnect(&mut self) -> Result<(), String> {
         if !self.connected() {
             // Nothing to disconnect
@@ -387,13 +409,9 @@ impl Session {
 
         let trace = self.incr_thread_trace();
 
-        let msg = message::Message::new(
-            message::MessageType::Disconnect,
-            trace,
-            message::Payload::NoPayload,
-        );
+        let msg = Message::new(MessageType::Disconnect, trace, Payload::NoPayload);
 
-        let tm = message::TransportMessage::new_with_body(
+        let tm = TransportMessage::new_with_body(
             self.remote_addr().full(),
             self.client().address(),
             self.thread(),
@@ -424,6 +442,9 @@ pub struct SessionHandle {
 }
 
 impl SessionHandle {
+    /// Issue a new API call and return the Request
+    ///
+    /// params is a Vec of JSON-able things.  E.g. vec![1,2,3], vec![json::object!{a: "b"}]
     pub fn request<T>(&mut self, method: &str, params: Vec<T>) -> Result<Request, String>
     where
         T: Into<JsonValue>,
@@ -457,6 +478,7 @@ impl SessionHandle {
     }
 }
 
+/// Iterates over a series of replies to an API request.
 pub struct ResponseIterator {
     request: Request,
 }

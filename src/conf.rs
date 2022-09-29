@@ -96,6 +96,12 @@ impl ClientConfig {
         }
     }
 
+    pub fn from_file(config_file: &str) -> Result<Self, String> {
+        let mut config = ClientConfig::new();
+        config.load_file(config_file)?;
+        Ok(config)
+    }
+
     pub fn bus_config(&self) -> &BusConfig {
         &self.bus_config
     }
