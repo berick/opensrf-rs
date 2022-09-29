@@ -39,10 +39,8 @@ impl fmt::Display for BusAddress {
 }
 
 impl BusAddress {
-
     /// Create a new bus address for a client.
     pub fn new_for_client(domain: &str) -> Self {
-
         let full = format!(
             "{}:client:{}:{}:{}:{}",
             BUS_ADDR_NAMESPACE,

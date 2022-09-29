@@ -19,7 +19,6 @@ pub struct Bus {
 }
 
 impl Bus {
-
     pub fn new(bus_config: &BusConfig) -> Result<Self, String> {
         let info = Bus::connection_info(bus_config)?;
         let domain = Bus::host_from_connection_info(&info);
@@ -221,7 +220,6 @@ impl Bus {
         timeout: i32,
         stream: Option<&str>,
     ) -> Result<Option<json::JsonValue>, String> {
-
         let json_string = match self.recv_one_chunk(timeout, stream)? {
             Some(s) => s,
             None => {

@@ -1,12 +1,12 @@
-use std::fmt;
-use json::JsonValue;
-use super::*;
-use super::client::Client;
 use super::addr::BusAddress;
-use super::message::Payload;
+use super::client::Client;
 use super::message::MessageStatus;
-use log::{trace, debug, warn, error};
-use std::cell::{Ref, RefMut, RefCell};
+use super::message::Payload;
+use super::*;
+use json::JsonValue;
+use log::{debug, error, trace, warn};
+use std::cell::{Ref, RefCell, RefMut};
+use std::fmt;
 use std::rc::Rc;
 
 const CONNECT_TIMEOUT: i32 = 10;
@@ -24,7 +24,6 @@ pub struct Request {
 }
 
 impl Request {
-
     pub fn new(session: Rc<RefCell<Session>>, thread_trace: usize) -> Request {
         Request {
             session,
@@ -34,7 +33,6 @@ impl Request {
     }
 
     pub fn recv(&mut self, timeout: i32) -> Result<Option<JsonValue>, String> {
-
         if self.complete {
             // If we are marked complete, it means we've read all the
             // replies, the last of which was a request-complete message.
@@ -104,9 +102,7 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-
     pub fn new(client: Rc<RefCell<Client>>, service: &str) -> SessionHandle {
-
         let ses = Session {
             client,
             _session_type: SessionType::Client,
@@ -122,7 +118,7 @@ impl Session {
         trace!("Created new session {ses}");
 
         SessionHandle {
-            session: Rc::new(RefCell::new(ses))
+            session: Rc::new(RefCell::new(ses)),
         }
     }
 
@@ -165,27 +161,23 @@ impl Session {
     }
 
     fn recv_from_backlog(&mut self, thread_trace: usize) -> Option<message::Message> {
-
-        if let Some(index) = self.backlog.iter()
-            .position(|m| m.thread_trace() == thread_trace) {
-
+        if let Some(index) = self
+            .backlog
+            .iter()
+            .position(|m| m.thread_trace() == thread_trace)
+        {
             trace!("{self} found a reply in the backlog for request {thread_trace}");
 
             Some(self.backlog.remove(index))
-
         } else {
             None
         }
     }
 
-
-    pub fn recv(&mut self, thread_trace: usize,
-        timeout: i32) -> Result<Option<Response>, String> {
-
+    pub fn recv(&mut self, thread_trace: usize, timeout: i32) -> Result<Option<Response>, String> {
         let mut timer = util::Timer::new(timeout);
 
         loop {
-
             trace!(
                 "{self} in recv() for trace {thread_trace} with {} remaining",
                 timer.remaining()
@@ -200,8 +192,7 @@ impl Session {
                 return Ok(None);
             }
 
-            let recv_op =
-                self.client_mut().recv_session(&mut timer, self.thread())?;
+            let recv_op = self.client_mut().recv_session(&mut timer, self.thread())?;
 
             if recv_op.is_none() {
                 continue;
@@ -227,11 +218,12 @@ impl Session {
         }
     }
 
-    fn unpack_reply(&mut self, timer: &mut util::Timer,
-        msg: message::Message) -> Result<Option<Response>, String> {
-
+    fn unpack_reply(
+        &mut self,
+        timer: &mut util::Timer,
+        msg: message::Message,
+    ) -> Result<Option<Response>, String> {
         if let Payload::Result(resp) = msg.payload() {
-
             // .to_owned() because this message is about to get dropped.
             let mut value = resp.content().to_owned();
             if let Some(s) = self.client().serializer() {
@@ -249,12 +241,13 @@ impl Session {
 
         if let Payload::Status(stat) = msg.payload() {
             match self.unpack_status_message(trace, timer, stat.status()) {
-                Ok(v) => { return Ok(v); }
+                Ok(v) => {
+                    return Ok(v);
+                }
                 Err(e) => err_msg = e,
             }
         } else {
-            err_msg =
-                format!("{self} unexpected response for request {trace}: {msg:?}");
+            err_msg = format!("{self} unexpected response for request {trace}: {msg:?}");
         }
 
         self.reset();
@@ -268,7 +261,6 @@ impl Session {
         timer: &mut util::Timer,
         stat: &message::MessageStatus,
     ) -> Result<Option<Response>, String> {
-
         let err_msg;
 
         match stat {
@@ -283,18 +275,19 @@ impl Session {
             }
             MessageStatus::Complete => {
                 trace!("{self} request {trace} complete");
-                return Ok(Some(Response { value: None, complete: true }));
+                return Ok(Some(Response {
+                    value: None,
+                    complete: true,
+                }));
             }
             MessageStatus::Timeout => {
                 err_msg = format!("{self} request {trace} timed out");
             }
             MessageStatus::NotFound => {
-                err_msg = format!(
-                    "{self} method bot found for request {trace}: {stat:?}");
+                err_msg = format!("{self} method bot found for request {trace}: {stat:?}");
             }
             _ => {
-                err_msg = format!(
-                    "{self} unexpected status message for request {trace} {stat:?}");
+                err_msg = format!("{self} unexpected status message for request {trace} {stat:?}");
             }
         }
 
@@ -348,10 +341,9 @@ impl Session {
 
     /// Establish a connected session with a remote service.
     pub fn connect(&mut self) -> Result<(), String> {
-
         if self.connected() {
             warn!("{self} is already connected");
-            return Ok(())
+            return Ok(());
         }
 
         debug!("{self} sending CONNECT");
@@ -368,7 +360,7 @@ impl Session {
             self.remote_addr().full(),
             self.client().address(),
             self.thread(),
-            msg
+            msg,
         );
 
         // A CONNECT always comes first, so we always drop it onto our
@@ -386,10 +378,9 @@ impl Session {
     }
 
     pub fn disconnect(&mut self) -> Result<(), String> {
-
         if !self.connected() {
             // Nothing to disconnect
-            return Ok(())
+            return Ok(());
         }
 
         debug!("{self} sending DISCONNECT");
@@ -433,7 +424,6 @@ pub struct SessionHandle {
 }
 
 impl SessionHandle {
-
     pub fn request<T>(&mut self, method: &str, params: Vec<T>) -> Result<Request, String>
     where
         T: Into<JsonValue>,
@@ -449,13 +439,12 @@ impl SessionHandle {
     /// the responses to the method.
     ///
     /// Uses the default request timeout DEFAULT_REQUEST_TIMEOUT.
-    pub fn sendrecv<T>(&mut self,
-        method: &str, params: Vec<T>) -> Result<ResponseIterator, String>
+    pub fn sendrecv<T>(&mut self, method: &str, params: Vec<T>) -> Result<ResponseIterator, String>
     where
         T: Into<JsonValue>,
     {
         Ok(ResponseIterator {
-            request: self.request(method, params)?
+            request: self.request(method, params)?,
         })
     }
 
@@ -476,7 +465,6 @@ impl Iterator for ResponseIterator {
     type Item = JsonValue;
 
     fn next(&mut self) -> Option<Self::Item> {
-
         match self.request.recv(DEFAULT_REQUEST_TIMEOUT) {
             Ok(op) => op,
             Err(e) => {

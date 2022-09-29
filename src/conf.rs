@@ -124,10 +124,7 @@ impl ClientConfig {
         let yaml_docs = match YamlLoader::load_from_str(yaml_text) {
             Ok(docs) => docs,
             Err(e) => {
-                return Err(format!(
-                    "Error parsing configuration file: {:?}",
-                    e
-                ));
+                return Err(format!("Error parsing configuration file: {:?}", e));
             }
         };
 

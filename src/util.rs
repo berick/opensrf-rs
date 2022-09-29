@@ -41,11 +41,10 @@ pub struct Timer {
 }
 
 impl Timer {
-
     pub fn new(duration: i32) -> Timer {
         Timer {
             duration,
-            start_time: Instant::now()
+            start_time: Instant::now(),
         }
     }
 
@@ -61,4 +60,3 @@ impl Timer {
         self.remaining() <= 0
     }
 }
-

@@ -1,19 +1,18 @@
-use std::fmt;
-use json::JsonValue;
-use super::*;
+use super::addr::BusAddress;
 use super::session::Session;
 use super::session::SessionHandle;
-use super::addr::BusAddress;
-use log::{trace, info};
-use std::collections::HashMap;
+use super::*;
+use json::JsonValue;
+use log::{info, trace};
 use std::cell::{Ref, RefCell};
+use std::collections::HashMap;
+use std::fmt;
 use std::rc::Rc;
 
 pub trait DataSerializer {
     fn pack(&self, value: &JsonValue) -> JsonValue;
     fn unpack(&self, value: &JsonValue) -> JsonValue;
 }
-
 
 pub struct Client {
     bus: bus::Bus,
@@ -33,11 +32,13 @@ pub struct Client {
 }
 
 impl Client {
-
     pub fn new(config: conf::ClientConfig) -> Result<ClientHandle, String> {
-
-        let domain = config.bus_config().domain().as_deref()
-            .expect("Domain required for client connection").to_string();
+        let domain = config
+            .bus_config()
+            .domain()
+            .as_deref()
+            .expect("Domain required for client connection")
+            .to_string();
 
         let bus = bus::Bus::new(config.bus_config())?;
 
@@ -51,7 +52,7 @@ impl Client {
         };
 
         Ok(ClientHandle {
-            client: Rc::new(RefCell::new(client))
+            client: Rc::new(RefCell::new(client)),
         })
     }
 
@@ -125,9 +126,11 @@ impl Client {
         }
     }
 
-    pub fn recv_session(&mut self, timer: &mut util::Timer,
-        thread: &str) -> Result<Option<message::TransportMessage>, String> {
-
+    pub fn recv_session(
+        &mut self,
+        timer: &mut util::Timer,
+        thread: &str,
+    ) -> Result<Option<message::TransportMessage>, String> {
         loop {
             if let Some(tm) = self.recv_session_from_backlog(thread) {
                 return Ok(Some(tm));
@@ -183,7 +186,6 @@ pub struct ClientHandle {
 }
 
 impl ClientHandle {
-
     /// Create a new client session for the requested service.
     pub fn session(&mut self, service: &str) -> SessionHandle {
         Session::new(self.client.clone(), service)
@@ -193,5 +195,3 @@ impl ClientHandle {
         self.client.borrow_mut().serializer = Some(serializer);
     }
 }
-
-
