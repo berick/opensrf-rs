@@ -14,3 +14,13 @@ roxmltree = "0.14.1"
 redis = { version = "0.21.4", features = ["streams"] }
 tungstenite = "0.16.0"
 gethostname = "0.2.3"
+
+[[bin]]
+name = "router"
+
+[[example]]
+name = "client"
+
+[[example]]
+name = "multi-domain-routing"
+
