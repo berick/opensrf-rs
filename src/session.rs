@@ -5,12 +5,12 @@ use super::client::Client;
 use super::addr::BusAddress;
 use super::message::Payload;
 use super::message::MessageStatus;
-use log::{trace, debug, info, warn};
-use std::collections::HashMap;
+use log::{trace, debug, warn, error};
 use std::cell::{Ref, RefMut, RefCell};
 use std::rc::Rc;
 
 const CONNECT_TIMEOUT: i32 = 10;
+const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
 
 pub struct Response {
     value: Option<JsonValue>,
@@ -21,21 +21,26 @@ pub struct Request {
     session: Rc<RefCell<Session>>,
     complete: bool,
     thread_trace: usize,
-    method: String,
 }
 
 impl Request {
 
-    pub fn new(session: Rc<RefCell<Session>>, method: &str, thread_trace: usize) -> Request {
+    pub fn new(session: Rc<RefCell<Session>>, thread_trace: usize) -> Request {
         Request {
             session,
-            method: method.to_string(),
             complete: false,
             thread_trace,
         }
     }
 
     pub fn recv(&mut self, timeout: i32) -> Result<Option<JsonValue>, String> {
+
+        if self.complete {
+            // If we are marked complete, it means we've read all the
+            // replies, the last of which was a request-complete message.
+            // Nothing left to read.
+            return Ok(None);
+        }
 
         let response = self.session.borrow_mut().recv(self.thread_trace, timeout)?;
 
@@ -58,7 +63,9 @@ pub enum SessionType {
 pub struct Session {
     client: Rc<RefCell<Client>>,
 
-    session_type: SessionType,
+    /// Client or Server
+    /// Pending server code dev.
+    _session_type: SessionType,
 
     /// Each session is identified on the network by a random thread string.
     thread: String,
@@ -102,7 +109,7 @@ impl Session {
 
         let ses = Session {
             client,
-            session_type: SessionType::Client,
+            _session_type: SessionType::Client,
             service: String::from(service),
             remote_addr: None,
             service_addr: BusAddress::new_for_service(&service),
@@ -419,14 +426,6 @@ impl Session {
 
         Ok(())
     }
-
-    /*
-    pub fn sendrecv<T>(&mut self, method: &str, params: Vec<T>) -> Result<ResponseIterator, String>
-    where
-        T: Into<JsonValue>,
-    {
-        debug!("{self} sending request {method}");
-    */
 }
 
 pub struct SessionHandle {
@@ -442,8 +441,21 @@ impl SessionHandle {
         Ok(Request {
             complete: false,
             session: self.session.clone(),
-            method: method.to_string(),
             thread_trace: self.session.borrow_mut().request(method, params)?,
+        })
+    }
+
+    /// Send a request and receive a ResponseIterator for iterating
+    /// the responses to the method.
+    ///
+    /// Uses the default request timeout DEFAULT_REQUEST_TIMEOUT.
+    pub fn sendrecv<T>(&mut self,
+        method: &str, params: Vec<T>) -> Result<ResponseIterator, String>
+    where
+        T: Into<JsonValue>,
+    {
+        Ok(ResponseIterator {
+            request: self.request(method, params)?
         })
     }
 
@@ -453,5 +465,24 @@ impl SessionHandle {
 
     pub fn disconnect(&self) -> Result<(), String> {
         self.session.borrow_mut().disconnect()
+    }
+}
+
+pub struct ResponseIterator {
+    request: Request,
+}
+
+impl Iterator for ResponseIterator {
+    type Item = JsonValue;
+
+    fn next(&mut self) -> Option<Self::Item> {
+
+        match self.request.recv(DEFAULT_REQUEST_TIMEOUT) {
+            Ok(op) => op,
+            Err(e) => {
+                error!("ResponseIterator failed with {e}");
+                None
+            }
+        }
     }
 }

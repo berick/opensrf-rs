@@ -4,11 +4,9 @@ use super::*;
 use super::session::Session;
 use super::session::SessionHandle;
 use super::addr::BusAddress;
-use super::message::Payload;
-use super::message::MessageStatus;
-use log::{trace, debug, info, warn};
+use log::{trace, info};
 use std::collections::HashMap;
-use std::cell::{Ref, RefMut, RefCell};
+use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 
 pub trait DataSerializer {
@@ -171,6 +169,12 @@ impl Client {
 
         let bus = self.get_connection(domain)?;
         bus.send(&tmsg)
+    }
+}
+
+impl fmt::Display for Client {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Client({})", self.address())
     }
 }
 
