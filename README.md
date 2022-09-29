@@ -12,13 +12,37 @@ fn main() -> Result<(), String> {
     let conf = ClientConfig::from_file("conf/opensrf_client.yml")?;
 
     let mut client = Client::new(conf)?;
+    let method = "opensrf.system.echo";
+
+    // EXAMPLE WITH SESSION REQUEST VIA ITERATOR ---------------
 
     let mut ses = client.session("opensrf.settings");
 
-    let method = "opensrf.system.echo";
     let params = vec!["Hello", "World", "Pamplemousse"];
 
     for resp in ses.sendrecv(method, params)? {
+        println!("Response: {}", resp.dump());
+    }
+
+    // EXAMPLE ONE-OFF REQUEST VIA ITERATOR --------------------
+
+    let params = vec!["Hello", "World", "Pamplemousse"];
+
+    for resp in client.sendrecv("opensrf.settings", method, params)? {
+        println!("Response: {}", resp.dump());
+    }
+
+    // EXAMPLE SESSION + MANUAL REQUEST ------------------------
+
+    let mut ses = client.session("opensrf.settings");
+
+    let params = vec!["Hello", "World", "Pamplemousse"];
+
+    let mut req = ses.request(method, params)?;
+
+    // Loop will continue until the request is complete or a recv()
+    // call times out.
+    while let Some(resp) = req.recv(60)? {
         println!("Response: {}", resp.dump());
     }
 

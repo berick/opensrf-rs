@@ -1,4 +1,5 @@
 use super::addr::BusAddress;
+use super::session::ResponseIterator;
 use super::session::Session;
 use super::session::SessionHandle;
 use super::*;
@@ -204,5 +205,23 @@ impl ClientHandle {
         self.client
             .borrow_mut()
             .send_router_command(domain, command, router_class)
+    }
+
+    /// Send a request and receive a ResponseIterator for iterating
+    /// the responses to the method.
+    ///
+    /// Uses the default request timeout DEFAULT_REQUEST_TIMEOUT.
+    pub fn sendrecv<T>(
+        &mut self,
+        service: &str,
+        method: &str,
+        params: Vec<T>,
+    ) -> Result<ResponseIterator, String>
+    where
+        T: Into<JsonValue>,
+    {
+        Ok(ResponseIterator::new(
+            self.session(service).request(method, params)?,
+        ))
     }
 }

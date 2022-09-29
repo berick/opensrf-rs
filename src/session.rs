@@ -464,9 +464,7 @@ impl SessionHandle {
     where
         T: Into<JsonValue>,
     {
-        Ok(ResponseIterator {
-            request: self.request(method, params)?,
-        })
+        Ok(ResponseIterator::new(self.request(method, params)?))
     }
 
     pub fn connect(&self) -> Result<(), String> {
@@ -494,5 +492,11 @@ impl Iterator for ResponseIterator {
                 None
             }
         }
+    }
+}
+
+impl ResponseIterator {
+    pub fn new(request: Request) -> Self {
+        ResponseIterator { request }
     }
 }
