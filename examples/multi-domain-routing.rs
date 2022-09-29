@@ -1,9 +1,5 @@
-use opensrf::addr::BusAddress;
-use opensrf::bus::Bus;
 use opensrf::client::Client;
-use opensrf::conf::BusConfig;
 use opensrf::conf::ClientConfig;
-use opensrf::message::TransportMessage;
 
 const PRIVATE_SERVICE: &str = "opensrf.private";
 const PUBLIC_SERVICE: &str = "opensrf.public";
@@ -21,7 +17,7 @@ fn main() {
 
     let mut conf2 = conf.clone();
 
-    let mut pvt_client = Client::new(conf).unwrap();
+    let pvt_client = Client::new(conf).unwrap();
 
     pvt_client
         .send_router_command(PRIVATE_DOMAIN, "register", PRIVATE_SERVICE)
@@ -29,7 +25,7 @@ fn main() {
 
     conf2.bus_config_mut().set_domain(PUBLIC_DOMAIN);
 
-    let mut pub_client = Client::new(conf2).unwrap();
+    let pub_client = Client::new(conf2).unwrap();
 
     pub_client
         .send_router_command(PRIVATE_DOMAIN, "register", PUBLIC_SERVICE)

@@ -184,7 +184,7 @@ impl RouterDomain {
         conf.set_username(username);
         conf.set_password(password);
 
-        let bus = match Bus::new(&conf, None) {
+        let bus = match Bus::new(&conf) {
             Ok(b) => b,
             Err(e) => return Err(format!("Cannot connect bus: {}", e)),
         };

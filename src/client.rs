@@ -194,4 +194,15 @@ impl ClientHandle {
     pub fn set_serializer(&self, serializer: Rc<RefCell<dyn DataSerializer>>) {
         self.client.borrow_mut().serializer = Some(serializer);
     }
+
+    pub fn send_router_command(
+        &self,
+        domain: &str,
+        command: &str,
+        router_class: &str,
+    ) -> Result<(), String> {
+        self.client
+            .borrow_mut()
+            .send_router_command(domain, command, router_class)
+    }
 }
