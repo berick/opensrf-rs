@@ -7,7 +7,7 @@ use super::message::Payload;
 use super::message::MessageStatus;
 use log::{trace, debug, info, warn};
 use std::collections::HashMap;
-use std::cell::RefCell;
+use std::cell::{Ref, RefMut, RefCell};
 use std::rc::Rc;
 
 const CONNECT_TIMEOUT: i32 = 10;
@@ -119,6 +119,14 @@ impl Session {
         }
     }
 
+    pub fn client(&self) -> Ref<Client> {
+        self.client.borrow()
+    }
+
+    pub fn client_mut(&self) -> RefMut<Client> {
+        self.client.borrow_mut()
+    }
+
     pub fn service(&self) -> &str {
         &self.service
     }
@@ -171,6 +179,11 @@ impl Session {
 
         loop {
 
+            trace!(
+                "{self} in recv() for trace {thread_trace} with {} remaining",
+                timer.remaining()
+            );
+
             if let Some(msg) = self.recv_from_backlog(thread_trace) {
                 return self.unpack_reply(&mut timer, msg);
             }
@@ -180,20 +193,26 @@ impl Session {
                 return Ok(None);
             }
 
-            if let Some(tmsg) =
-                self.client.borrow_mut().recv_session(&mut timer, self.thread())? {
-                // Toss the messages onto our backlog as we receive them.
+            let recv_op =
+                self.client_mut().recv_session(&mut timer, self.thread())?;
 
-                if self.remote_addr().full() != tmsg.from() {
-                    // Response from a specific worker
-                    self.remote_addr = Some(BusAddress::new_from_string(tmsg.from())?);
-                }
+            if recv_op.is_none() {
+                continue;
+            }
 
-                trace!("{self} pulled messages from the data bus");
+            let tmsg = recv_op.unwrap();
 
-                for msg in tmsg.body() {
-                    self.backlog.push(msg.to_owned());
-                }
+            // Toss the messages onto our backlog as we receive them.
+
+            if self.remote_addr().full() != tmsg.from() {
+                // Response from a specific worker
+                self.remote_addr = Some(BusAddress::new_from_string(tmsg.from())?);
+            }
+
+            trace!("{self} pulled messages from the data bus");
+
+            for msg in tmsg.body() {
+                self.backlog.push(msg.to_owned());
             }
 
             // Loop back around and see if we can pull the message
@@ -206,15 +225,16 @@ impl Session {
 
         if let Payload::Result(resp) = msg.payload() {
 
-            // TODO serializer
+            // .to_owned() because this message is about to get dropped.
+            let mut value = resp.content().to_owned();
+            if let Some(s) = self.client().serializer() {
+                value = s.unpack(&value);
+            }
 
             return Ok(Some(Response {
-                // We can to_owned() here because we are done with the
-                // container message.  We just need the content now.
-                value: Some(resp.content().to_owned()),
+                value: Some(value),
                 complete: false,
             }));
-
         }
 
         let err_msg;
@@ -289,30 +309,18 @@ impl Session {
 
         let mut pvec = Vec::new();
         for p in params {
-            // TODO serializer
-            pvec.push(json::from(p));
-        }
-        let payload = Payload::Method(message::Method::new(method, pvec));
-
-
-        /*
-        let payload;
-
-        if let Some(s) = self.serializer {
-            let mut packed_params = Vec::new();
-            for par in param_vec {
-                packed_params.push(s.pack(&par));
+            let mut jv = json::from(p);
+            if let Some(s) = self.client().serializer() {
+                jv = s.pack(&jv);
             }
-            payload = Payload::Method(Method::new(method, packed_params));
-        } else {
-            payload = Payload::Method(Method::new(method, param_vec));
+            pvec.push(jv);
         }
 
-        */
+        let payload = Payload::Method(message::Method::new(method, pvec));
 
         let req = message::Message::new(message::MessageType::Request, trace, payload);
 
-        let mut client = self.client.borrow_mut();
+        let mut client = self.client_mut();
 
         let tm = message::TransportMessage::new_with_body(
             self.remote_addr().full(),
@@ -351,14 +359,14 @@ impl Session {
 
         let tm = message::TransportMessage::new_with_body(
             self.remote_addr().full(),
-            self.client.borrow().address(),
+            self.client().address(),
             self.thread(),
             msg
         );
 
         // A CONNECT always comes first, so we always drop it onto our
         // primary domain and let the router figure it out.
-        self.client.borrow_mut().primary_connection_mut().send(&tm)?;
+        self.client_mut().primary_connection_mut().send(&tm)?;
 
         self.recv(trace, CONNECT_TIMEOUT)?;
 
@@ -389,7 +397,7 @@ impl Session {
 
         let tm = message::TransportMessage::new_with_body(
             self.remote_addr().full(),
-            self.client.borrow().address(),
+            self.client().address(),
             self.thread(),
             msg,
         );
@@ -397,7 +405,7 @@ impl Session {
         if let Some(domain) = self.remote_addr().domain() {
             // There should always be a domain in this context
 
-            let mut client = self.client.borrow_mut();
+            let mut client = self.client_mut();
 
             // We may be disconnecting from a remote domain.
             let bus = client.get_connection(&domain)?;
@@ -411,6 +419,14 @@ impl Session {
 
         Ok(())
     }
+
+    /*
+    pub fn sendrecv<T>(&mut self, method: &str, params: Vec<T>) -> Result<ResponseIterator, String>
+    where
+        T: Into<JsonValue>,
+    {
+        debug!("{self} sending request {method}");
+    */
 }
 
 pub struct SessionHandle {

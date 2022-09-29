@@ -221,12 +221,15 @@ impl Bus {
         timeout: i32,
         stream: Option<&str>,
     ) -> Result<Option<json::JsonValue>, String> {
+
         let json_string = match self.recv_one_chunk(timeout, stream)? {
             Some(s) => s,
             None => {
                 return Ok(None);
             }
         };
+
+        trace!("{self} read json from the bus: {json_string}");
 
         match json::parse(&json_string) {
             Ok(json_val) => Ok(Some(json_val)),

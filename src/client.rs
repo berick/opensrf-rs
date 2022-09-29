@@ -8,8 +8,14 @@ use super::message::Payload;
 use super::message::MessageStatus;
 use log::{trace, debug, info, warn};
 use std::collections::HashMap;
-use std::cell::RefCell;
+use std::cell::{Ref, RefMut, RefCell};
 use std::rc::Rc;
+
+pub trait DataSerializer {
+    fn pack(&self, value: &JsonValue) -> JsonValue;
+    fn unpack(&self, value: &JsonValue) -> JsonValue;
+}
+
 
 pub struct Client {
     bus: bus::Bus,
@@ -25,7 +31,7 @@ pub struct Client {
     /// processed by any sessions.
     backlog: Vec<message::TransportMessage>,
 
-    //pub serializer: Option<&'a dyn DataSerializer>,
+    pub serializer: Option<Rc<RefCell<dyn DataSerializer>>>,
 }
 
 impl Client {
@@ -43,12 +49,20 @@ impl Client {
             primary_domain: domain.to_string(),
             backlog: Vec::new(),
             remote_bus_map: HashMap::new(),
-            //serializer: None,
+            serializer: None,
         };
 
         Ok(ClientHandle {
             client: Rc::new(RefCell::new(client))
         })
+    }
+
+    pub fn serializer(&self) -> Option<Ref<dyn DataSerializer>> {
+        if self.serializer.is_some() {
+            Some(self.serializer.as_deref().unwrap().borrow())
+        } else {
+            None
+        }
     }
 
     /// Full bus address as a string
@@ -170,4 +184,10 @@ impl ClientHandle {
     pub fn session(&mut self, service: &str) -> SessionHandle {
         Session::new(self.client.clone(), service)
     }
+
+    pub fn set_serializer(&self, serializer: Rc<RefCell<dyn DataSerializer>>) {
+        self.client.borrow_mut().serializer = Some(serializer);
+    }
 }
+
+
