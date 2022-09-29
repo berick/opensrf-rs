@@ -14,21 +14,21 @@ fn main() -> Result<(), String> {
     let mut client = Client::new(conf)?;
     let method = "opensrf.system.echo";
 
-    // EXAMPLE WITH SESSION REQUEST VIA ITERATOR ---------------
+    // EXAMPLE ONE-OFF REQUEST WITH ITERATOR --------------------
+
+    let params = vec!["Hello", "World", "Pamplemousse"];
+
+    for resp in client.sendrecv("opensrf.settings", method, params)? {
+        println!("Response: {}", resp.dump());
+    }
+
+    // EXAMPLE SESSION REQUEST WITH ITERATOR ---------------
 
     let mut ses = client.session("opensrf.settings");
 
     let params = vec!["Hello", "World", "Pamplemousse"];
 
     for resp in ses.sendrecv(method, params)? {
-        println!("Response: {}", resp.dump());
-    }
-
-    // EXAMPLE ONE-OFF REQUEST VIA ITERATOR --------------------
-
-    let params = vec!["Hello", "World", "Pamplemousse"];
-
-    for resp in client.sendrecv("opensrf.settings", method, params)? {
         println!("Response: {}", resp.dump());
     }
 
