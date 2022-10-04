@@ -73,6 +73,7 @@ enum LogLevel {
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
     bus_config: BusConfig,
+    multi_domain_support: bool,
     /*
     log_file: LogFile,
     log_level: LogLevel,
@@ -86,6 +87,7 @@ impl ClientConfig {
     pub fn new() -> Self {
         ClientConfig {
             bus_config: BusConfig::new(),
+            multi_domain_support: false,
             /*
             log_file: LogFile::Syslog,
             log_level: LogLevel::Info,
@@ -94,6 +96,14 @@ impl ClientConfig {
             settings_file: None,
             */
         }
+    }
+
+    pub fn multi_domain_support(&self) -> bool {
+        self.multi_domain_support
+    }
+
+    pub fn enable_multi_domain_support(&mut self) {
+        self.multi_domain_support = true;
     }
 
     pub fn from_file(config_file: &str) -> Result<Self, String> {

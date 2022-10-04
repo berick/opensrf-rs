@@ -5,10 +5,12 @@ use super::session::SessionHandle;
 use super::*;
 use json::JsonValue;
 use log::{info, trace};
-use std::cell::{Ref, RefCell};
+use std::cell::{RefCell};
 use std::collections::HashMap;
 use std::fmt;
-use std::rc::Rc;
+use std::cell::RefMut;
+use std::rc::{Rc};
+use std::sync::Arc;
 
 pub trait DataSerializer {
     fn pack(&self, value: &JsonValue) -> JsonValue;
@@ -29,7 +31,7 @@ pub struct Client {
     /// processed by any sessions.
     backlog: Vec<message::TransportMessage>,
 
-    pub serializer: Option<Rc<RefCell<dyn DataSerializer>>>,
+    pub serializer: Option<Arc<dyn DataSerializer>>,
 }
 
 impl Client {
@@ -57,12 +59,19 @@ impl Client {
         })
     }
 
-    pub fn serializer(&self) -> Option<Ref<dyn DataSerializer>> {
+    pub fn primary_domain(&self) -> &str {
+        &self.primary_domain
+    }
+
+    pub fn serializer(&self) -> &Option<Arc<dyn DataSerializer>> {
+        &self.serializer
+        /*
         if self.serializer.is_some() {
-            Some(self.serializer.as_deref().unwrap().borrow())
+            Some(self.serializer.as_deref().unwrap())
         } else {
             None
         }
+        */
     }
 
     /// Full bus address as a string
@@ -189,10 +198,18 @@ pub struct ClientHandle {
 impl ClientHandle {
     /// Create a new client session for the requested service.
     pub fn session(&mut self, service: &str) -> SessionHandle {
-        Session::new(self.client.clone(), service)
+        Session::new(
+            self.client.clone(),
+            service,
+            self.client.borrow().config.multi_domain_support()
+        )
     }
 
-    pub fn set_serializer(&self, serializer: Rc<RefCell<dyn DataSerializer>>) {
+    pub fn client_mut(&self) -> RefMut<Client> {
+        self.client.borrow_mut()
+    }
+
+    pub fn set_serializer(&self, serializer: Arc<dyn DataSerializer>) {
         self.client.borrow_mut().serializer = Some(serializer);
     }
 

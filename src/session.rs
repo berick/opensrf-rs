@@ -105,6 +105,11 @@ pub struct Session {
     /// Only set if we are connected directly to a remote worker.
     remote_addr: Option<BusAddress>,
 
+    /// If enabled, stateless (non-connected) API calls will be delivered
+    /// to the router address on the primary domain instead of directly
+    /// to the target service.
+    multi_domain_support: bool,
+
     /// Most recently used per-thread request id.
     ///
     /// Each new Request within a Session gets a new thread_trace.
@@ -123,7 +128,9 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    pub fn new(client: Rc<RefCell<Client>>, service: &str) -> SessionHandle {
+    pub fn new(client: Rc<RefCell<Client>>,
+        service: &str, multi_domain_support: bool) -> SessionHandle {
+
         let ses = Session {
             client,
             _session_type: SessionType::Client,
@@ -132,6 +139,7 @@ impl Session {
             service_addr: BusAddress::new_for_service(&service),
             connected: false,
             last_thread_trace: 0,
+            multi_domain_support,
             backlog: Vec::new(),
             thread: util::random_number(16),
         };
@@ -343,21 +351,38 @@ impl Session {
 
         let req = Message::new(MessageType::Request, trace, payload);
 
-        let mut client = self.client_mut();
 
         let tm = TransportMessage::new_with_body(
             self.remote_addr().full(),
-            client.address(),
+            self.client().address(),
             self.thread(),
             req,
         );
+
+        /*
+        let mut client = self.client_mut();
 
         let bus = match self.remote_addr().is_client() {
             true => client.get_connection(self.remote_addr().domain().unwrap())?,
             false => client.primary_connection_mut(),
         };
+        */
 
-        bus.send(&tm)?;
+        if !self.connected && self.multi_domain_support {
+            // Send top-level API calls to our router.
+            let addr = BusAddress::new_for_router(self.client().primary_domain());
+
+            debug!("Sending top-level API call to router {}", addr.full());
+
+            self.client_mut().primary_connection_mut().send_to(&tm, addr.full())?;
+
+        } else if self.remote_addr().is_client() {
+            let domain = self.remote_addr().domain().unwrap();
+            self.client_mut().get_connection(domain)?.send(&tm)?;
+
+        } else {
+            self.client_mut().primary_connection_mut().send(&tm)?;
+        }
 
         Ok(trace)
     }

@@ -198,11 +198,11 @@ impl RouterDomain {
     fn send_to_domain(&mut self, addr: &BusAddress, msg: &json::JsonValue) -> Result<(), String> {
         let json_str = msg.dump();
 
-        trace!("send() writing chunk to={}: {}", addr.full(), json_str);
+        trace!("send_to_domain() routing API call to={}: {}", addr.full(), json_str);
 
         let maxlen = StreamMaxlen::Approx(1000); // TODO CONFIG
 
-        // TODO use bus.send() instead
+        // TODO use bus.send_to() / transport message instead
 
         let bus = match &mut self.bus {
             Some(b) => b,
