@@ -21,7 +21,7 @@ pub struct Bus {
 impl Bus {
     pub fn new(bus_config: &BusConfig) -> Result<Self, String> {
         let info = Bus::connection_info(bus_config)?;
-        let domain = Bus::host_from_connection_info(&info);
+        let domain = Bus::host_from_connection_info(&info).to_string();
 
         trace!("Bus::new() connecting to {:?}", info);
 
@@ -85,36 +85,13 @@ impl Bus {
         // Build the connection info by hand because it gives us more
         // flexibility/control than compiling a URL string.
 
-        // TODO: do we need a way to say username/password are required?
-        // There may be cases where we want to use the default login,
-        // e.g. out-of-band maintenance.
-        let mut redis_con = RedisConnectionInfo {
+        let redis_con = RedisConnectionInfo {
             db: 0,
-            username: None,
-            password: None,
+            username: Some(bus_config.username().to_string()),
+            password: Some(bus_config.password().to_string()),
         };
 
-        if let Some(username) = bus_config.username() {
-            redis_con.username = Some(String::from(username));
-
-            if let Some(password) = bus_config.password() {
-                redis_con.password = Some(String::from(password));
-            }
-        }
-
-        let con_addr: ConnectionAddr;
-
-        if let Some(ref domain) = bus_config.domain() {
-            let mut port = DEFAULT_REDIS_PORT;
-
-            if let Some(p) = bus_config.port() {
-                port = *p;
-            }
-
-            con_addr = ConnectionAddr::Tcp(String::from(domain), port);
-        } else {
-            return Err(format!("Domain Info Required in Configuration"));
-        }
+        let con_addr = ConnectionAddr::Tcp(bus_config.domain().to_string(), bus_config.port());
 
         Ok(ConnectionInfo {
             addr: con_addr,

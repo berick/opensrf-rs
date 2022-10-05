@@ -39,19 +39,14 @@ pub struct Client {
 
 impl Client {
     pub fn new(config: conf::ClientConfig) -> Result<ClientHandle, String> {
-        let domain = config
-            .bus_config()
-            .domain()
-            .as_deref()
-            .expect("Domain required for client connection")
-            .to_string();
+        let domain = config.bus_config().domain().to_string();
 
         let bus = bus::Bus::new(config.bus_config())?;
 
         let client = Client {
             config,
+            domain,
             bus: bus,
-            domain: domain.to_string(),
             backlog: Vec::new(),
             remote_bus_map: HashMap::new(),
             serializer: None,

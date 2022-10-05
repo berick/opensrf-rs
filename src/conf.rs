@@ -2,54 +2,57 @@ use std::fs;
 use yaml_rust::yaml;
 use yaml_rust::YamlLoader;
 
+const DEFAULT_BUS_PORT: u16 = 6379;
+const DEFAULT_BUS_DOMAIN: &str = "localhost";
+
 #[derive(Debug, Clone)]
 pub struct BusConfig {
-    domain: Option<String>,
-    port: Option<u16>,
-    username: Option<String>,
-    password: Option<String>,
+    domain: String,
+    port: u16,
+    username: String,
+    password: String,
 }
 
 impl BusConfig {
-    pub fn new() -> Self {
+    pub fn new(domain: &str, port: u16, username: &str, password: &str) -> Self {
         BusConfig {
-            domain: None,
-            port: None,
-            username: None,
-            password: None,
+            port,
+            domain: domain.to_string(),
+            username: username.to_string(),
+            password: password.to_string(),
         }
     }
 
-    pub fn domain(&self) -> &Option<String> {
+    pub fn domain(&self) -> &str {
         &self.domain
     }
 
-    pub fn port(&self) -> &Option<u16> {
-        &self.port
+    pub fn port(&self) -> u16 {
+        self.port
     }
 
-    pub fn username(&self) -> &Option<String> {
+    pub fn username(&self) -> &str {
         &self.username
     }
 
-    pub fn password(&self) -> &Option<String> {
+    pub fn password(&self) -> &str {
         &self.password
     }
 
     pub fn set_domain(&mut self, domain: &str) {
-        self.domain = Some(String::from(domain));
+        self.domain = domain.to_string();
     }
 
     pub fn set_port(&mut self, port: u16) {
-        self.port = Some(port);
+        self.port = port;
     }
 
     pub fn set_username(&mut self, username: &str) {
-        self.username = Some(String::from(username));
+        self.username = username.to_string();
     }
 
     pub fn set_password(&mut self, password: &str) {
-        self.password = Some(String::from(password));
+        self.password = password.to_string();
     }
 }
 
@@ -84,32 +87,12 @@ pub struct ClientConfig {
 }
 
 impl ClientConfig {
-    pub fn new() -> Self {
-        ClientConfig {
-            bus_config: BusConfig::new(),
-            multi_domain_support: false,
-            /*
-            log_file: LogFile::Syslog,
-            log_level: LogLevel::Info,
-            syslog_facility: None,
-            actlog_facility: None,
-            settings_file: None,
-            */
-        }
-    }
-
     pub fn multi_domain_support(&self) -> bool {
         self.multi_domain_support
     }
 
     pub fn enable_multi_domain_support(&mut self) {
         self.multi_domain_support = true;
-    }
-
-    pub fn from_file(config_file: &str) -> Result<Self, String> {
-        let mut config = ClientConfig::new();
-        config.load_file(config_file)?;
-        Ok(config)
     }
 
     pub fn bus_config(&self) -> &BusConfig {
@@ -121,7 +104,7 @@ impl ClientConfig {
     }
 
     /// Load configuration from a YAML file
-    pub fn load_file(&mut self, config_file: &str) -> Result<(), String> {
+    pub fn from_file(config_file: &str) -> Result<Self, String> {
         let yaml_text = match fs::read_to_string(config_file) {
             Ok(t) => t,
             Err(e) => {
@@ -132,11 +115,11 @@ impl ClientConfig {
             }
         };
 
-        self.load_string(&yaml_text)
+        ClientConfig::from_string(&yaml_text)
     }
 
     /// Load configuration from a YAML string
-    pub fn load_string(&mut self, yaml_text: &str) -> Result<(), String> {
+    pub fn from_string(yaml_text: &str) -> Result<Self, String> {
         let yaml_docs = match YamlLoader::load_from_str(yaml_text) {
             Ok(docs) => docs,
             Err(e) => {
@@ -146,10 +129,14 @@ impl ClientConfig {
 
         let root = &yaml_docs[0];
 
-        self.set_logging_config(root)?;
-        self.set_bus_config(root)?;
+        let mut conf = ClientConfig {
+            bus_config: ClientConfig::create_bus_config(root)?,
+            multi_domain_support: false, // TODO
+        };
 
-        Ok(())
+        conf.set_logging_config(root)?;
+
+        Ok(conf)
     }
 
     fn set_logging_config(&mut self, yaml: &yaml::Yaml) -> Result<(), String> {
@@ -165,23 +152,36 @@ impl ClientConfig {
         Ok(())
     }
 
-    fn set_bus_config(&mut self, yaml: &yaml::Yaml) -> Result<(), String> {
-        if let Some(p) = yaml["message_bus"]["port"].as_i64() {
-            self.bus_config.set_port(p as u16);
+    fn create_bus_config(yaml: &yaml::Yaml) -> Result<BusConfig, String> {
+        let port = match yaml["message_bus"]["port"].as_i64() {
+            Some(p) => p as u16,
+            None => DEFAULT_BUS_PORT,
         };
 
-        if let Some(h) = yaml["message_bus"]["domain"].as_str() {
-            self.bus_config.set_domain(h);
+        let domain = match yaml["message_bus"]["domain"].as_str() {
+            Some(d) => d,
+            None => DEFAULT_BUS_DOMAIN,
         };
 
-        if let Some(s) = yaml["message_bus"]["username"].as_str() {
-            self.bus_config.set_username(s);
+        let username = match yaml["message_bus"]["username"].as_str() {
+            Some(u) => u,
+            None => {
+                return Err(format!("BusConfig requires a username"));
+            }
         };
 
-        if let Some(s) = yaml["message_bus"]["password"].as_str() {
-            self.bus_config.set_password(s);
+        let password = match yaml["message_bus"]["password"].as_str() {
+            Some(u) => u,
+            None => {
+                return Err(format!("BusConfig requires a password"));
+            }
         };
 
-        Ok(())
+        Ok(BusConfig {
+            port,
+            domain: domain.to_string(),
+            username: username.to_string(),
+            password: password.to_string(),
+        })
     }
 }

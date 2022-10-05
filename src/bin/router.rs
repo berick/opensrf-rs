@@ -5,13 +5,7 @@ use opensrf::bus::Bus;
 use opensrf::conf::BusConfig;
 use opensrf::conf::ClientConfig;
 use opensrf::message::TransportMessage;
-use redis::streams::{StreamId, StreamKey, StreamMaxlen, StreamReadOptions, StreamReadReply};
-use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo, Value};
-use std::collections::HashMap;
-use std::fmt;
 use std::thread;
-
-const DEFAULT_REDIS_PORT: u16 = 6379;
 
 /// A service controller.
 ///
@@ -179,11 +173,7 @@ impl RouterDomain {
             return Ok(());
         }
 
-        let mut conf = BusConfig::new();
-        conf.set_domain(self.domain());
-        conf.set_port(port);
-        conf.set_username(username);
-        conf.set_password(password);
+        let conf = BusConfig::new(self.domain(), port, username, password);
 
         let bus = match Bus::new(&conf) {
             Ok(b) => b,
@@ -484,6 +474,7 @@ impl Router {
         let service = addr.service().unwrap(); // required for is_service
 
         if self.primary_domain.has_service(service) {
+            self.primary_domain.route_count += 1;
             return self.primary_domain.send_to_domain(tm);
         }
 
@@ -495,6 +486,7 @@ impl Router {
                     r_domain.connect(&self.bus_username, &self.bus_password, self.bus_port)?;
                 }
 
+                r_domain.route_count += 1;
                 return r_domain.send_to_domain(tm);
             }
         }
@@ -546,8 +538,52 @@ impl Router {
         match router_command {
             "register" => self.handle_register(from_addr, get_class()?),
             "unregister" => self.handle_unregister(&from_addr, get_class()?),
-            _ => Err(format!("Unsupported router command: {router_command}")),
+            _ => self.deliver_information(from_addr, tm),
         }
+    }
+
+    /// Deliver stats, etc. to clients that request it.
+    fn deliver_information(
+        &mut self,
+        from_addr: BusAddress,
+        mut tm: TransportMessage,
+    ) -> Result<(), String> {
+        let router_command = tm.router_command().unwrap(); // known exists
+
+        match router_command {
+            "summarize" => tm.set_router_reply(&self.to_json_value().dump()),
+            _ => {
+                return Err(format!("Unsupported router command: {router_command}"));
+            }
+        }
+
+        // Bounce the message back to the caller with the requested data.
+        tm.set_from(self.primary_domain.bus().unwrap().address().full());
+        tm.set_to(from_addr.full());
+
+        let domain = match from_addr.domain() {
+            Some(d) => d,
+            None => {
+                return Err(format!(
+                    "Cannot send router reply to addrwess with hno domain: {from_addr}"
+                ));
+            }
+        };
+
+        let r_domain_op = self.find_or_create_domain(domain);
+        if r_domain_op.is_none() {
+            return Err(format!("Could not send reply to domain {domain}"));
+        }
+
+        let r_domain = r_domain_op.unwrap();
+
+        /* TODO
+        if r_domain.bus.is_none() {
+            r_domain.connect(&self.bus_username, &self.bus_password, self.bus_port)?;
+        }
+        */
+
+        r_domain.send_to_domain(tm)
     }
 
     fn recv_one(&mut self) -> Result<TransportMessage, String> {
@@ -557,7 +593,7 @@ impl Router {
             .expect("We always maintain a connection on the primary domain");
 
         loop {
-            // Looping should not be required, but can't hurt.
+            // Looping should not be required here, but can't hurt.
 
             if let Some(tm) = bus.recv(-1, Some(self.listen_address.full()))? {
                 return Ok(tm);
@@ -571,6 +607,7 @@ impl Router {
 fn main() {
     let conf = ClientConfig::from_file("conf/opensrf_client.yml").unwrap();
 
+    // Run one router thread per hosted domain
     let t1 = thread::spawn(|| {
         let mut router: Router =
             Router::new("private.localhost", "opensrf@private", "password", 6379);
@@ -589,30 +626,6 @@ fn main() {
         router.listen();
     });
 
-    t1.join();
-    t2.join();
-
-    /*
-    router.handle_register(
-        "private.localhost",
-        "opensrf.settings",
-        "opensrf:client:opensrf.settings.123"
-    ).expect("Register OK");
-
-    router.handle_register(
-        "public.localhost",
-        "opensrf.math",
-        "opensrf:client:opensrf.math.123"
-    ).expect("Register OK");
-
-    println!("{}", router.to_json_value().dump());
-
-    router.handle_unregister(
-        "public.localhost",
-        "opensrf.math",
-        "opensrf:client:opensrf.math.123"
-    ).expect("UnRegister OK");
-    */
-
-    //println!("{}", router.to_json_value().dump());
+    t1.join().ok();
+    t2.join().ok();
 }

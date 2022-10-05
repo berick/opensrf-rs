@@ -173,6 +173,7 @@ pub struct TransportMessage {
     osrf_xid: String,
     router_command: Option<String>,
     router_class: Option<String>,
+    router_reply: Option<String>,
     body: Vec<Message>,
 }
 
@@ -185,6 +186,7 @@ impl TransportMessage {
             osrf_xid: String::from(""),
             router_command: None,
             router_class: None,
+            router_reply: None,
             body: Vec::new(),
         }
     }
@@ -199,8 +201,16 @@ impl TransportMessage {
         &self.to
     }
 
+    pub fn set_to(&mut self, to: &str) {
+        self.to = to.to_string();
+    }
+
     pub fn from(&self) -> &str {
         &self.from
+    }
+
+    pub fn set_from(&mut self, from: &str) {
+        self.from = from.to_string();
     }
 
     pub fn thread(&self) -> &str {
@@ -239,6 +249,14 @@ impl TransportMessage {
         self.router_class = Some(class.to_string());
     }
 
+    pub fn router_reply(&self) -> Option<&str> {
+        self.router_reply.as_deref()
+    }
+
+    pub fn set_router_reply(&mut self, reply: &str) {
+        self.router_reply = Some(reply.to_string());
+    }
+
     pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
         let to = match json_obj["to"].as_str() {
             Some(i) => i,
@@ -275,6 +293,10 @@ impl TransportMessage {
             tmsg.set_router_class(rc);
         }
 
+        if let Some(rc) = json_obj["router_reply"].as_str() {
+            tmsg.set_router_reply(rc);
+        }
+
         if let json::JsonValue::Array(ref arr) = json_obj["body"] {
             for body in arr {
                 if let Some(b) = Message::from_json_value(&body) {
@@ -308,6 +330,10 @@ impl TransportMessage {
 
         if let Some(rc) = self.router_class() {
             obj["router_class"] = json::from(rc);
+        }
+
+        if let Some(rc) = self.router_reply() {
+            obj["router_reply"] = json::from(rc);
         }
 
         obj

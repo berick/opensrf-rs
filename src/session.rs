@@ -70,18 +70,9 @@ impl Request {
     }
 }
 
-pub enum SessionType {
-    Client,
-    Server,
-}
-
 pub struct Session {
     /// Link to our Client so we can ask it to pull data from the Bus.
     client: Rc<RefCell<Client>>,
-
-    /// Client or Server
-    /// Pending server code dev.
-    _session_type: SessionType,
 
     /// Each session is identified on the network by a random thread string.
     thread: String,
@@ -135,7 +126,6 @@ impl Session {
     ) -> SessionHandle {
         let ses = Session {
             client,
-            _session_type: SessionType::Client,
             service: String::from(service),
             remote_addr: None,
             service_addr: BusAddress::new_for_service(&service),

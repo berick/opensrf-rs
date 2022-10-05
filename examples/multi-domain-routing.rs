@@ -9,12 +9,11 @@ const PRIVATE_DOMAIN: &str = "private.localhost";
 const PUBLIC_DOMAIN: &str = "public.localhost";
 
 fn main() -> Result<(), String> {
-    let mut conf = ClientConfig::new();
+    let mut conf = ClientConfig::from_file("conf/opensrf_client.yml")?;
     conf.enable_multi_domain_support();
 
     // Force the config to use the private domain.
     conf.bus_config_mut().set_domain(PRIVATE_DOMAIN);
-    conf.load_file("conf/opensrf_client.yml")?;
 
     // Force our 2ndary config to use the public domain
     let mut conf2 = conf.clone();

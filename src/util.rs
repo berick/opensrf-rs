@@ -36,7 +36,12 @@ pub fn json_usize(value: &json::JsonValue) -> Option<usize> {
 }
 
 pub struct Timer {
+    /// Duration of this timer in seconds.
+    /// Timer is "done" once this many seconds have passed
+    /// since start_time.
     duration: i32,
+
+    /// Moment this timer starts.
     start_time: Instant,
 }
 
