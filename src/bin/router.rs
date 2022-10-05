@@ -4,6 +4,7 @@ use opensrf::addr::BusAddress;
 use opensrf::bus::Bus;
 use opensrf::conf::BusConfig;
 use opensrf::conf::ClientConfig;
+use opensrf::message::TransportMessage;
 use redis::streams::{StreamId, StreamKey, StreamMaxlen, StreamReadOptions, StreamReadReply};
 use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo, Value};
 use std::collections::HashMap;
@@ -195,14 +196,8 @@ impl RouterDomain {
     }
 
     /// Send a message to this domain via our domain connection.
-    fn send_to_domain(&mut self, addr: &BusAddress, msg: &json::JsonValue) -> Result<(), String> {
-        let json_str = msg.dump();
-
-        trace!("send_to_domain() routing API call to={}: {}", addr.full(), json_str);
-
-        let maxlen = StreamMaxlen::Approx(1000); // TODO CONFIG
-
-        // TODO use bus.send_to() / transport message instead
+    fn send_to_domain(&mut self, tm: TransportMessage) -> Result<(), String> {
+        trace!("send_to_domain() routing API call to {}", tm.to());
 
         let bus = match &mut self.bus {
             Some(b) => b,
@@ -211,15 +206,7 @@ impl RouterDomain {
             }
         };
 
-        let res: Result<String, _> =
-            bus.connection()
-                .xadd_maxlen(addr.full(), maxlen, "*", &[("message", json_str)]);
-
-        if let Err(e) = res {
-            return Err(format!("Error sending to domain {} : {}", self.domain(), e));
-        };
-
-        Ok(())
+        bus.send(&tm)
     }
 }
 
@@ -283,21 +270,16 @@ impl Router {
 
     /// Setup the Redis stream/group we listen to
     pub fn setup_stream(&mut self) -> Result<(), String> {
-        let sname = self.listen_address.full().to_string();
+        let sname = self.listen_address.full();
 
-        info!("Setting up primary stream={} group={}", &sname, &sname);
+        info!("Setting up primary stream={sname}");
 
-        let con = &mut self.primary_domain.bus_mut().unwrap().connection();
+        let bus = &mut self
+            .primary_domain
+            .bus_mut()
+            .expect("Primary domain must have a bus");
 
-        let created: Result<(), _> = con.xgroup_create_mkstream(&sname, &sname, "$");
-
-        if let Err(e) = created {
-            // TODO Differentiate error types.
-            // Some errors are worse than others.
-            debug!("stream group {} probably already exists: {}", &sname, e);
-        }
-
-        Ok(())
+        bus.setup_stream(Some(sname))
     }
 
     fn to_json_value(&self) -> json::JsonValue {
@@ -465,8 +447,8 @@ impl Router {
         // domain and route accordingly.
 
         loop {
-            let msg_str = match self.recv_one() {
-                Ok(s) => s,
+            let tm = match self.recv_one() {
+                Ok(m) => m,
                 Err(s) => {
                     error!(
                         "Error receiving data on our primary domain connection: {}",
@@ -476,52 +458,33 @@ impl Router {
                 }
             };
 
-            if let Err(s) = self.route_message(&msg_str) {
+            if let Err(s) = self.route_message(tm) {
                 error!("Error routing message: {}", s);
             }
         }
     }
 
-    fn route_message(&mut self, msg_str: &str) -> Result<(), String> {
-        let json_val = match json::parse(msg_str) {
-            Ok(v) => v,
-            Err(e) => {
-                return Err(format!(
-                    "Failed to parse message as JSON: {} {}",
-                    e, msg_str
-                ));
-            }
-        };
-
-        let to = match json_val["to"].as_str() {
-            Some(i) => i,
-            None => {
-                return Err(format!("Message has no recipient: {}", msg_str));
-            }
-        };
+    fn route_message(&mut self, tm: TransportMessage) -> Result<(), String> {
+        let to = tm.to();
 
         debug!("Received message destined for {}", to);
 
         let addr = BusAddress::new_from_string(to)?;
 
         if addr.is_service() {
-            return self.route_api_request(&addr, &json_val);
+            return self.route_api_request(&addr, tm);
         } else if addr.is_router() {
-            return self.handle_router_command(&json_val);
+            return self.handle_router_command(tm);
         } else {
             return Err(format!("Unexpected message recipient: {}", to));
         }
     }
 
-    fn route_api_request(
-        &mut self,
-        addr: &BusAddress,
-        json_val: &json::JsonValue,
-    ) -> Result<(), String> {
+    fn route_api_request(&mut self, addr: &BusAddress, tm: TransportMessage) -> Result<(), String> {
         let service = addr.service().unwrap(); // required for is_service
 
         if self.primary_domain.has_service(service) {
-            return self.primary_domain.send_to_domain(addr, json_val);
+            return self.primary_domain.send_to_domain(tm);
         }
 
         for r_domain in &mut self.remote_domains {
@@ -532,7 +495,7 @@ impl Router {
                     r_domain.connect(&self.bus_username, &self.bus_password, self.bus_port)?;
                 }
 
-                return r_domain.send_to_domain(addr, json_val);
+                return r_domain.send_to_domain(tm);
             }
         }
 
@@ -544,33 +507,20 @@ impl Router {
         ));
     }
 
-    fn handle_router_command(&mut self, json_val: &json::JsonValue) -> Result<(), String> {
-        let router_command = match json_val["router_command"].as_str() {
-            Some(s) => s,
-            None => {
-                return Err(format!("No router command present: {}", json_val));
-            }
-        };
-
-        let from = match json_val["from"].as_str() {
+    fn handle_router_command(&mut self, tm: TransportMessage) -> Result<(), String> {
+        let router_command = match tm.router_command() {
             Some(s) => s,
             None => {
                 return Err(format!(
-                    "Router command message has no 'from': {}",
-                    json_val
+                    "No router command present: {}",
+                    tm.to_json_value().dump()
                 ));
             }
         };
 
-        let from_addr = match BusAddress::new_from_string(from) {
-            Ok(a) => a,
-            Err(e) => {
-                return Err(format!(
-                    "Router command received invalid from address: {}",
-                    e
-                ));
-            }
-        };
+        let from = tm.from();
+
+        let from_addr = BusAddress::new_from_string(from)?;
 
         if !from_addr.is_client() {
             return Err(format!("Router command received from non-client address"));
@@ -582,90 +532,39 @@ impl Router {
         );
 
         // Not all router commands require a router class.
-        let router_class_op = json_val["router_class"].as_str();
+        let get_class = || {
+            if let Some(rc) = tm.router_class() {
+                return Ok(rc);
+            } else {
+                return Err(format!(
+                    "Message has not router class: {}",
+                    tm.to_json_value().dump()
+                ));
+            }
+        };
 
-        if router_command.eq("register") {
-            match router_class_op {
-                Some(rclass) => {
-                    return self.handle_register(from_addr, rclass);
-                }
-                None => {
-                    return Err(format!("No router class defined: {}", json_val));
-                }
-            }
-        } else if router_command.eq("unregister") {
-            match router_class_op {
-                Some(rclass) => {
-                    return self.handle_unregister(&from_addr, rclass);
-                }
-                None => {
-                    return Err(format!("No router class defined: {}", json_val));
-                }
-            }
+        match router_command {
+            "register" => self.handle_register(from_addr, get_class()?),
+            "unregister" => self.handle_unregister(&from_addr, get_class()?),
+            _ => Err(format!("Unsupported router command: {router_command}")),
         }
-
-        Ok(())
     }
 
-    fn recv_one(&mut self) -> Result<String, String> {
-        // TODO use bus.recv()
-
-        let addr = self.listen_address.full();
-
-        let read_opts = StreamReadOptions::default()
-            .count(1) // One at a time, please
-            .block(0) // Block indefinitely
-            .noack() // We don't need ACK's
-            .group(addr, addr);
-
+    fn recv_one(&mut self) -> Result<TransportMessage, String> {
         let bus = self
             .primary_domain
             .bus_mut()
             .expect("We always maintain a connection on the primary domain");
 
-        let connection = bus.connection();
+        loop {
+            // Looping should not be required, but can't hurt.
 
-        debug!("Waiting for messages at {}", addr);
-
-        let reply: StreamReadReply = match connection.xread_options(&[&addr], &[">"], &read_opts) {
-            Ok(r) => r,
-            Err(e) => match e.kind() {
-                redis::ErrorKind::TypeError => {
-                    return Err(format!(
-                        "Redis returned unexpected type; could be a signal interrupt"
-                    ));
-                }
-                _ => {
-                    return Err(format!(
-                        "Error reading Redis instance for primary domain: {}",
-                        e
-                    ));
-                }
-            },
-        };
-
-        for StreamKey { key, ids } in reply.keys {
-            trace!("Read value from stream {}", key);
-
-            for StreamId { id, map } in ids {
-                trace!("Read message ID {}", id);
-
-                if let Some(message) = map.get("message") {
-                    if let Value::Data(bytes) = message {
-                        if let Ok(s) = String::from_utf8(bytes.to_vec()) {
-                            trace!("Read value from bus: {}", s);
-                            return Ok(s);
-                        } else {
-                            return Err(format!("Received unexpected stream data: {:?}", message));
-                        };
-                    } else {
-                        return Err(format!("Received unexpected stream data"));
-                    }
-                };
+            if let Some(tm) = bus.recv(-1, Some(self.listen_address.full()))? {
+                return Ok(tm);
+            } else {
+                debug!("recv() on main bus address returned None.  Will keep trying");
             }
         }
-
-        Err(format!("No value read from primary domain connection"))
     }
 }
 

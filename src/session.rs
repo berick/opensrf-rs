@@ -128,9 +128,11 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    pub fn new(client: Rc<RefCell<Client>>,
-        service: &str, multi_domain_support: bool) -> SessionHandle {
-
+    pub fn new(
+        client: Rc<RefCell<Client>>,
+        service: &str,
+        multi_domain_support: bool,
+    ) -> SessionHandle {
         let ses = Session {
             client,
             _session_type: SessionType::Client,
@@ -351,7 +353,6 @@ impl Session {
 
         let req = Message::new(MessageType::Request, trace, payload);
 
-
         let tm = TransportMessage::new_with_body(
             self.remote_addr().full(),
             self.client().address(),
@@ -359,29 +360,21 @@ impl Session {
             req,
         );
 
-        /*
-        let mut client = self.client_mut();
-
-        let bus = match self.remote_addr().is_client() {
-            true => client.get_connection(self.remote_addr().domain().unwrap())?,
-            false => client.primary_connection_mut(),
-        };
-        */
-
-        if !self.connected && self.multi_domain_support {
-            // Send top-level API calls to our router.
-            let addr = BusAddress::new_for_router(self.client().primary_domain());
+        if self.multi_domain_support && !self.connected() {
+            // Routed service-level API call
+            let addr = BusAddress::new_for_router(self.client().domain());
 
             debug!("Sending top-level API call to router {}", addr.full());
 
-            self.client_mut().primary_connection_mut().send_to(&tm, addr.full())?;
-
+            self.client_mut().bus_mut().send_to(&tm, addr.full())?;
         } else if self.remote_addr().is_client() {
-            let domain = self.remote_addr().domain().unwrap();
-            self.client_mut().get_connection(domain)?.send(&tm)?;
+            // Direct communication with a worker
 
+            let domain = self.remote_addr().domain().unwrap();
+            self.client_mut().get_domain_bus(domain)?.send(&tm)?;
         } else {
-            self.client_mut().primary_connection_mut().send(&tm)?;
+            // Service-level API call / non-routed
+            self.client_mut().bus_mut().send(&tm)?;
         }
 
         Ok(trace)
@@ -409,7 +402,7 @@ impl Session {
 
         // A CONNECT always comes first, so we always drop it onto our
         // primary domain and let the router figure it out.
-        self.client_mut().primary_connection_mut().send(&tm)?;
+        self.client_mut().bus_mut().send(&tm)?;
 
         self.recv(trace, CONNECT_TIMEOUT)?;
 
@@ -449,7 +442,7 @@ impl Session {
             let mut client = self.client_mut();
 
             // We may be disconnecting from a remote domain.
-            let bus = client.get_connection(&domain)?;
+            let bus = client.get_domain_bus(&domain)?;
 
             bus.send(&tm)?;
         }

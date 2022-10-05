@@ -5,11 +5,11 @@ use super::session::SessionHandle;
 use super::*;
 use json::JsonValue;
 use log::{info, trace};
-use std::cell::{RefCell};
+use std::cell::RefCell;
+use std::cell::RefMut;
 use std::collections::HashMap;
 use std::fmt;
-use std::cell::RefMut;
-use std::rc::{Rc};
+use std::rc::Rc;
 use std::sync::Arc;
 
 pub trait DataSerializer {
@@ -20,7 +20,8 @@ pub trait DataSerializer {
 pub struct Client {
     bus: bus::Bus,
 
-    primary_domain: String,
+    /// Our primary domain
+    domain: String,
 
     /// Connections to remote domains.
     remote_bus_map: HashMap<String, bus::Bus>,
@@ -31,7 +32,9 @@ pub struct Client {
     /// processed by any sessions.
     backlog: Vec<message::TransportMessage>,
 
-    pub serializer: Option<Arc<dyn DataSerializer>>,
+    /// If present, JsonValue's will be passed through its pack() and
+    /// unpack() methods before/after data hits the network.
+    serializer: Option<Arc<dyn DataSerializer>>,
 }
 
 impl Client {
@@ -48,7 +51,7 @@ impl Client {
         let client = Client {
             config,
             bus: bus,
-            primary_domain: domain.to_string(),
+            domain: domain.to_string(),
             backlog: Vec::new(),
             remote_bus_map: HashMap::new(),
             serializer: None,
@@ -59,19 +62,8 @@ impl Client {
         })
     }
 
-    pub fn primary_domain(&self) -> &str {
-        &self.primary_domain
-    }
-
     pub fn serializer(&self) -> &Option<Arc<dyn DataSerializer>> {
         &self.serializer
-        /*
-        if self.serializer.is_some() {
-            Some(self.serializer.as_deref().unwrap())
-        } else {
-            None
-        }
-        */
     }
 
     /// Full bus address as a string
@@ -79,20 +71,20 @@ impl Client {
         self.bus.address().full()
     }
 
+    /// Our primary bus domain
     pub fn domain(&self) -> &str {
-        &self.primary_domain
+        &self.domain
     }
 
-    pub fn primary_connection(&self) -> &bus::Bus {
+    pub fn bus(&self) -> &bus::Bus {
         &self.bus
     }
 
-    pub fn primary_connection_mut(&mut self) -> &mut bus::Bus {
+    pub fn bus_mut(&mut self) -> &mut bus::Bus {
         &mut self.bus
     }
 
-    pub fn get_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, String> {
-        // Our primary bus address always has a domain.
+    pub fn get_domain_bus(&mut self, domain: &str) -> Result<&mut bus::Bus, String> {
         if domain.eq(self.domain()) {
             Ok(&mut self.bus)
         } else {
@@ -111,7 +103,7 @@ impl Client {
         info!("Opened connection to new domain: {}", domain);
 
         self.remote_bus_map.insert(domain.to_string(), bus);
-        self.get_connection(domain)
+        self.get_domain_bus(domain)
     }
 
     /// Discard any unprocessed messages from our backlog and clear our
@@ -180,7 +172,7 @@ impl Client {
         tmsg.set_router_command(router_command);
         tmsg.set_router_class(router_class);
 
-        let bus = self.get_connection(domain)?;
+        let bus = self.get_domain_bus(domain)?;
         bus.send(&tmsg)
     }
 }
@@ -201,7 +193,7 @@ impl ClientHandle {
         Session::new(
             self.client.clone(),
             service,
-            self.client.borrow().config.multi_domain_support()
+            self.client.borrow().config.multi_domain_support(),
         )
     }
 
