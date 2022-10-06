@@ -7,8 +7,6 @@ use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo, Value
 use std::fmt;
 use std::time;
 
-const DEFAULT_REDIS_PORT: u16 = 6379;
-
 /// Manages the Redis connection.
 pub struct Bus {
     connection: redis::Connection,

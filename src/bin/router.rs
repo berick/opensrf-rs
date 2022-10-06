@@ -133,25 +133,18 @@ impl RouterDomain {
 
     fn remove_service(&mut self, service: &str, address: &BusAddress) {
         if let Some(s_pos) = self.services.iter().position(|s| s.name().eq(service)) {
+
             let svc = self.services.get_mut(s_pos).unwrap(); // known OK
+            svc.remove_controller(address);
 
-            if let Some(c_pos) = svc
-                .controllers
-                .iter()
-                .position(|c| c.address().full().eq(address.full()))
-            {
-                if svc.controllers.len() == 1 {
-                    debug!(
-                        "Removing registration for service={} on removal of last controller address={}",
-                        service, address
-                    );
+            if svc.controllers.len() == 0 {
+                debug!(
+                    "Removing registration for service={} on removal of last controller address={}",
+                    service, address
+                );
 
-                    if let Some(s_pos) = self.services.iter().position(|s| s.name().eq(service)) {
-                        self.services.remove(s_pos);
-                    }
-                } else {
-                    debug!("Removing registration for service={}", service);
-                    svc.controllers.remove(c_pos);
+                if let Some(s_pos) = self.services.iter().position(|s| s.name().eq(service)) {
+                    self.services.remove(s_pos);
                 }
             }
         }
@@ -605,7 +598,7 @@ impl Router {
 }
 
 fn main() {
-    let conf = ClientConfig::from_file("conf/opensrf_client.yml").unwrap();
+    let _ = ClientConfig::from_file("conf/opensrf_client.yml").unwrap();
 
     // Run one router thread per hosted domain
     let t1 = thread::spawn(|| {

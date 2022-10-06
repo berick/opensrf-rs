@@ -1,6 +1,6 @@
+use opensrf::Client;
+use opensrf::ClientConfig;
 use opensrf::addr::BusAddress;
-use opensrf::client::Client;
-use opensrf::conf::ClientConfig;
 
 const PRIVATE_SERVICE: &str = "opensrf.private";
 const PUBLIC_SERVICE: &str = "opensrf.public";

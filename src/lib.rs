@@ -1,3 +1,6 @@
+pub use client::Client as Client;
+pub use conf::ClientConfig as ClientConfig;
+
 pub mod addr;
 pub mod bus;
 pub mod classified;

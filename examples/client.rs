@@ -1,5 +1,5 @@
-use opensrf::client::Client;
-use opensrf::conf::ClientConfig;
+use opensrf::Client;
+use opensrf::ClientConfig;
 
 const SERVICE: &str = "opensrf.settings";
 const METHOD: &str = "opensrf.system.echo";
