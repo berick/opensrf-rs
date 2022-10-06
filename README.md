@@ -4,27 +4,34 @@ OpenSRF Rust Bindings
 ## Synopsis
 
 ```rs
-use opensrf::client::Client;
-use opensrf::conf::ClientConfig;
+use opensrf::Client;
+use opensrf::ClientConfig;
 
 fn main() -> Result<(), String> {
 
     let conf = ClientConfig::from_file("conf/opensrf_client.yml")?;
-
     let mut client = Client::new(conf)?;
-    let method = "opensrf.system.echo";
 
-    // EXAMPLE ONE-OFF REQUEST WITH ITERATOR --------------------
+    let method = "opensrf.system.echo";
+    let service = "opensrf.settings";
+
+    // EXAMPLE SESSION + MANUAL REQUEST ------------------------
+
+    let mut ses = client.session(service);
 
     let params = vec!["Hello", "World", "Pamplemousse"];
 
-    for resp in client.sendrecv("opensrf.settings", method, params)? {
+    let mut req = ses.request(method, params)?;
+
+    // Loop will continue until the request is complete or a recv()
+    // call times out.
+    while let Some(resp) = req.recv(60)? {
         println!("Response: {}", resp.dump());
     }
 
     // EXAMPLE SESSION REQUEST WITH ITERATOR ---------------
 
-    let mut ses = client.session("opensrf.settings");
+    let mut ses = client.session(service);
 
     // Requests consume our params vec, so we need a new one
     // for each request.
@@ -34,17 +41,11 @@ fn main() -> Result<(), String> {
         println!("Response: {}", resp.dump());
     }
 
-    // EXAMPLE SESSION + MANUAL REQUEST ------------------------
-
-    let mut ses = client.session("opensrf.settings");
+    // EXAMPLE ONE-OFF REQUEST WITH ITERATOR --------------------
 
     let params = vec!["Hello", "World", "Pamplemousse"];
 
-    let mut req = ses.request(method, params)?;
-
-    // Loop will continue until the request is complete or a recv()
-    // call times out.
-    while let Some(resp) = req.recv(60)? {
+    for resp in client.sendrecv(service, method, params)? {
         println!("Response: {}", resp.dump());
     }
 
