@@ -36,9 +36,9 @@ fn main() -> Result<(), String> {
         .bus_mut()
         .setup_stream(Some(pub_addr.full()))?;
 
-    pvt_client.send_router_command(PRIVATE_DOMAIN, "register", PRIVATE_SERVICE)?;
-    pub_client.send_router_command(PRIVATE_DOMAIN, "register", PUBLIC_SERVICE)?;
-    pub_client.send_router_command(PUBLIC_DOMAIN, "register", PUBLIC_SERVICE)?;
+    pvt_client.send_router_command(PRIVATE_DOMAIN, "register", Some(PRIVATE_SERVICE), false)?;
+    pub_client.send_router_command(PRIVATE_DOMAIN, "register", Some(PUBLIC_SERVICE), false)?;
+    pub_client.send_router_command(PUBLIC_DOMAIN, "register", Some(PUBLIC_SERVICE), false)?;
 
     // Send a x-domain request
     let mut ses = pvt_client.session(PUBLIC_SERVICE);
@@ -54,9 +54,18 @@ fn main() -> Result<(), String> {
         println!("Routed message arrived: {}", resp.to_json_value().dump());
     }
 
-    pvt_client.send_router_command(PRIVATE_DOMAIN, "unregister", PRIVATE_SERVICE)?;
-    pub_client.send_router_command(PRIVATE_DOMAIN, "unregister", PUBLIC_SERVICE)?;
-    pub_client.send_router_command(PUBLIC_DOMAIN, "unregister", PUBLIC_SERVICE)?;
+    if let Some(jv) = pvt_client.send_router_command(PRIVATE_DOMAIN, "summarize", None, true)? {
+        println!("Router command returned: {}", jv.dump());
+    }
+
+    if let Some(jv) = pub_client.send_router_command(PUBLIC_DOMAIN, "summarize", None, true)? {
+        println!("Router command returned: {}", jv.dump());
+    }
+
+
+    pvt_client.send_router_command(PRIVATE_DOMAIN, "unregister", Some(PRIVATE_SERVICE), false)?;
+    pub_client.send_router_command(PRIVATE_DOMAIN, "unregister", Some(PUBLIC_SERVICE), false)?;
+    pub_client.send_router_command(PUBLIC_DOMAIN, "unregister", Some(PUBLIC_SERVICE), false)?;
 
     Ok(())
 }

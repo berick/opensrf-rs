@@ -542,6 +542,7 @@ impl Router {
         mut tm: TransportMessage,
     ) -> Result<(), String> {
         let router_command = tm.router_command().unwrap(); // known exists
+        debug!("Handling info router command : {router_command}");
 
         match router_command {
             "summarize" => tm.set_router_reply(&self.to_json_value().dump()),
@@ -563,6 +564,10 @@ impl Router {
             }
         };
 
+        let username = self.bus_username.to_string();
+        let password = self.bus_password.to_string();
+        let port = self.bus_port;
+
         let r_domain_op = self.find_or_create_domain(domain);
         if r_domain_op.is_none() {
             return Err(format!("Could not send reply to domain {domain}"));
@@ -570,11 +575,9 @@ impl Router {
 
         let r_domain = r_domain_op.unwrap();
 
-        /* TODO
         if r_domain.bus.is_none() {
-            r_domain.connect(&self.bus_username, &self.bus_password, self.bus_port)?;
+            r_domain.connect(&username, &password, port)?;
         }
-        */
 
         r_domain.send_to_domain(tm)
     }

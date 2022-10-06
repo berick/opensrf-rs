@@ -12,6 +12,8 @@ use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 
+const DEFAULT_ROUTER_COMMAND_TIMEOUT: i32 = 10;
+
 pub trait DataSerializer {
     fn pack(&self, value: &JsonValue) -> JsonValue;
     fn unpack(&self, value: &JsonValue) -> JsonValue;
@@ -153,8 +155,9 @@ impl Client {
         &mut self,
         domain: &str,
         router_command: &str,
-        router_class: &str,
-    ) -> Result<(), String> {
+        router_class: Option<&str>,
+        await_reply: bool,
+    ) -> Result<Option<JsonValue>, String> {
         let addr = BusAddress::new_for_router(domain);
 
         // Always use the address of our primary Bus
@@ -165,10 +168,36 @@ impl Client {
         );
 
         tmsg.set_router_command(router_command);
-        tmsg.set_router_class(router_class);
+        if let Some(rc) = router_class {
+            tmsg.set_router_class(rc);
+        }
 
         let bus = self.get_domain_bus(domain)?;
-        bus.send(&tmsg)
+        bus.send(&tmsg)?;
+
+        if !await_reply {
+            return Ok(None);
+        }
+
+        match bus.recv(DEFAULT_ROUTER_COMMAND_TIMEOUT, None)? {
+            Some(tm) => match tm.router_reply() {
+                Some(reply) => match json::parse(reply) {
+                    Ok(jv) => Ok(Some(jv)),
+                    Err(e) => Err(format!(
+                        "Router command {} return unparseable content: {} {}",
+                        router_command, reply, e
+                    )),
+                },
+                _ => Err(format!(
+                    "Router command {} returned without reply_content",
+                    router_command
+                ))
+            },
+            _ => Err(format!(
+                "Router command {} returned no results in {} seconds",
+                router_command, DEFAULT_ROUTER_COMMAND_TIMEOUT
+            ))
+        }
     }
 }
 
@@ -204,11 +233,12 @@ impl ClientHandle {
         &self,
         domain: &str,
         command: &str,
-        router_class: &str,
-    ) -> Result<(), String> {
+        router_class: Option<&str>,
+        await_reply: bool,
+    ) -> Result<Option<JsonValue>, String> {
         self.client
             .borrow_mut()
-            .send_router_command(domain, command, router_class)
+            .send_router_command(domain, command, router_class, await_reply)
     }
 
     /// Send a request and receive a ResponseIterator for iterating
