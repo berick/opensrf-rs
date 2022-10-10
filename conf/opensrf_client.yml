@@ -12,75 +12,78 @@ logging:
 
 # ---- EXPERIMENTAL FORMAT
 
-# Domain names are free-form and only used in this configuration file
-# to link domains to accounts, connections, and routers.
-domains:
-  - name: public-domain
-    host: public.localhost
-    port: 6379
-  - name: private-domain
-    host: private.localhost
-    port: 6379
+message-bus: 
 
-# Account name are free-from and only used in this configuration file to
-# link accounts to connections and routers.
-accounts:
-  - name: public-account
-    domain: public-domain
-    username: opensrf@public
-    password: password
-  - name: private-account
-    domain: private-domain
-    username: opensrf@private
-    password: password
+  # Domains where the message bus operates.
+  # Domain names are free-form and only used in this configuration file
+  # to link domains to accounts, connections, and routers.
+  domains:
+    - name: public-domain
+      host: public.localhost
+      port: 6379
+    - name: private-domain
+      host: private.localhost
+      port: 6379
 
-# Connections have well-known names ("service", "gateway", "srfsh") but other
-connections:
-  - name: service
-    domain: private-domain
-    account: private-account
-    logging:
-      logfile: syslog
-      loglevel: debug
-      syslog_facility: local0
-      actlog_facility: local1
-  - name: gateway
-    domain: public-domain
-    account: public-account
-    logging:
-      logfile: syslog
-      loglevel: info
-      syslog_facility: local6
-      actlog_facility: local1
-  - name: srfsh
-    domain: private-domain
-    account: private-account
-    logging:
-      logfile: /openils/var/log/srfsh.log
-      loglevel: debug
+  # Accounts are used for logging in to the message bus.
+  # Account name are free-from and only used in this configuration file to
+  # link accounts to connections and routers.
+  accounts:
+    - name: public-account
+      domain: public-domain
+      username: opensrf@public
+      password: password
+    - name: private-account
+      domain: private-domain
+      username: opensrf@private
+      password: password
 
-# Router names are used as part of the destination address for each
-# router during service registration, deregistration, and other 
-# router-specific commands.
-routers:
-  - name: private-router
-    domain: private-domain
-    account: private-account
-    services: *
-    logging:
-      logfile: syslog
-      loglevel: info
-      syslog_facility: local2
-  - name: public-router
-    domain: public-domain
-    account: public-account
-    services: public-services
-    logging:
-      logfile: syslog
-      loglevel: info
-      syslog_facility: local2
+  # Some connections have well-known names ("service", "gateway", "srfsh"),
+  # but other free-form names can be added.
+  # Bus domain is implied by the 'account'.
+  connections:
+    - name: service
+      account: private-account
+      logging:
+        logfile: syslog
+        loglevel: debug
+        syslog-facility: local0
+        actlog_facility: local1
+    - name: gateway
+      account: public-account
+      logging:
+        logfile: syslog
+        loglevel: info
+        syslog-facility: local6
+        actlog_facility: local1
+    - name: srfsh
+      account: private-account
+      logging:
+        logfile: /openils/var/log/srfsh.log
+        loglevel: debug
 
-services:
+  # Router names are used as part of the destination address for each
+  # router during service registration, deregistration, and other 
+  # router-specific commands.
+  # A single domain can host multiple routers.
+  # Bus domain is implied by the 'account'.
+  routers:
+    - name: private-router
+      account: private-account
+      services: *
+      logging:
+        logfile: syslog
+        loglevel: info
+        syslog-facility: local2
+    - name: public-router
+      account: public-account
+      services: public-services
+      logging:
+        logfile: syslog
+        loglevel: info
+        syslog-facility: local2
+
+service-groups:
   - name: public-services
     services:
       - opensrf.math
@@ -106,7 +109,7 @@ services:
       - open-ils.url_verify
       - open-ils.vandelay
 
-log_protect:
+log-protect:
   - open-ils.auth.authenticate.verify
   - open-ils.auth.authenticate.complete
   - open-ils.auth.login
