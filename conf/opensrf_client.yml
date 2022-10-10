@@ -10,79 +10,79 @@ logging:
   log4rs_config: conf/log4rs.yml
 
 
-# ---- EXPERIMENTAL FORMAT
+# ---- EXPERIMENTAL FORMAT -----
 
-message-bus: 
+# Named logging configs.
+loggers:
+  - name: service-logger
+    logfile: syslog
+    loglevel: info
+    syslog-facility: local0
+    actlog-facility: local1
+  - name: gateway-logger
+    logfile: syslog
+    loglevel: info
+    syslog-facility: local6
+    actlog-facility: local1
+  - name: router-logger
+    logfile: syslog
+    loglevel: info
+    syslog-facility: local2
 
-  # Domains where the message bus operates.
-  # Domain names are free-form and only used in this configuration file
-  # to link domains to accounts, connections, and routers.
-  domains:
-    - name: public-domain
-      host: public.localhost
-      port: 6379
-    - name: private-domain
-      host: private.localhost
-      port: 6379
+# Domains where the message bus operates.
+# Domain names are free-form and only used in this configuration file
+# to link domains to accounts, connections, and routers.
+domains:
+  - name: public-domain
+    host: public.localhost
+    port: 6379
+  - name: private-domain
+    host: private.localhost
+    port: 6379
 
-  # Accounts are used for logging in to the message bus.
-  # Account name are free-from and only used in this configuration file to
-  # link accounts to connections and routers.
-  accounts:
-    - name: public-account
-      domain: public-domain
-      username: opensrf@public
-      password: password
-    - name: private-account
-      domain: private-domain
-      username: opensrf@private
-      password: password
+# Accounts are used for logging in to the message bus.
+# Account name are free-from and only used in this configuration file to
+# link accounts to connections and routers.
+accounts:
+  - name: public-account
+    domain: public-domain
+    username: opensrf@public
+    password: password
+  - name: private-account
+    domain: private-domain
+    username: opensrf@private
+    password: password
 
-  # Some connections have well-known names ("service", "gateway", "srfsh"),
-  # but other free-form names can be added.
-  # Bus domain is implied by the 'account'.
-  connections:
-    - name: service
-      account: private-account
-      logging:
-        logfile: syslog
-        loglevel: debug
-        syslog-facility: local0
-        actlog_facility: local1
-    - name: gateway
-      account: public-account
-      logging:
-        logfile: syslog
-        loglevel: info
-        syslog-facility: local6
-        actlog_facility: local1
-    - name: srfsh
-      account: private-account
-      logging:
-        logfile: /openils/var/log/srfsh.log
-        loglevel: debug
+# Some connections have well-known names ("service", "gateway", "srfsh"),
+# but other free-form names can be added.
+connections:
+  - name: service
+    account: private-account
+    logger: service-logger
+  - name: gateway
+    account: public-account
+    logger: gateway-logger
+  - name: srfsh
+    account: private-account
+    logger: service-logger
 
-  # Router names are used as part of the destination address for each
-  # router during service registration, deregistration, and other 
-  # router-specific commands.
-  # A single domain can host multiple routers.
-  # Bus domain is implied by the 'account'.
-  routers:
-    - name: private-router
-      account: private-account
-      services: *
-      logging:
-        logfile: syslog
-        loglevel: info
-        syslog-facility: local2
-    - name: public-router
-      account: public-account
-      services: public-services
-      logging:
-        logfile: syslog
-        loglevel: info
-        syslog-facility: local2
+# Router names are used as part of the destination address for each
+# router during service registration, deregistration, and other
+# router-specific commands.  Multiple routers can be run on a single
+# domain.
+routers:
+  - name: private-router
+    account: private-account
+    logger: router-logger
+  - name: public-router
+    account: public-account
+    logger: router-logger
+    # Some routers only host certain services
+    services: public-services
 
+# Named groups of services.
+# By default, there is a "public-services" group which is those accessible
+# via the default "public-router" router.
 service-groups:
   - name: public-services
     services:
@@ -109,6 +109,7 @@ service-groups:
       - open-ils.url_verify
       - open-ils.vandelay
 
+# Avoid logging call parameters for these API's at INFO level or below.
 log-protect:
   - open-ils.auth.authenticate.verify
   - open-ils.auth.authenticate.complete
