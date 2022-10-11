@@ -1,4 +1,5 @@
 pub use client::Client;
+pub use client::ClientHandle;
 pub use conf::ClientConfig;
 
 pub mod addr;
