@@ -1,6 +1,5 @@
 use super::addr::BusAddress;
 use super::session::ResponseIterator;
-use super::session::Session;
 use super::session::SessionHandle;
 use super::*;
 use json::JsonValue;
@@ -191,12 +190,12 @@ impl Client {
                 _ => Err(format!(
                     "Router command {} returned without reply_content",
                     router_command
-                ))
+                )),
             },
             _ => Err(format!(
                 "Router command {} returned no results in {} seconds",
                 router_command, DEFAULT_ROUTER_COMMAND_TIMEOUT
-            ))
+            )),
         }
     }
 }
@@ -214,7 +213,7 @@ pub struct ClientHandle {
 impl ClientHandle {
     /// Create a new client session for the requested service.
     pub fn session(&mut self, service: &str) -> SessionHandle {
-        Session::new(
+        SessionHandle::new(
             self.client.clone(),
             service,
             self.client.borrow().config.multi_domain_support(),

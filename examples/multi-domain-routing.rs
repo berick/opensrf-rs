@@ -1,6 +1,6 @@
+use opensrf::addr::BusAddress;
 use opensrf::Client;
 use opensrf::ClientConfig;
-use opensrf::addr::BusAddress;
 
 const PRIVATE_SERVICE: &str = "opensrf.private";
 const PUBLIC_SERVICE: &str = "opensrf.public";
@@ -59,7 +59,6 @@ fn main() -> Result<(), String> {
     if let Some(jv) = pub_client.send_router_command(PUBLIC_DOMAIN, "summarize", None, true)? {
         println!("Router command returned: {}", jv.dump());
     }
-
 
     // Send a request for a private service on our public router.
     // This should result in a failure on receive.

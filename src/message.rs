@@ -683,8 +683,11 @@ impl Status {
 
 impl fmt::Display for Status {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "stat={} class={} label={}",
-            self.status, self.msg_class, self.status_label)
+        write!(
+            f,
+            "stat={} class={} label={}",
+            self.status, self.msg_class, self.status_label
+        )
     }
 }
 

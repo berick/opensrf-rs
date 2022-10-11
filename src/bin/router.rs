@@ -4,7 +4,7 @@ use opensrf::addr::BusAddress;
 use opensrf::bus::Bus;
 use opensrf::conf::BusConfig;
 use opensrf::conf::ClientConfig;
-use opensrf::message::{Message, MessageType, Payload, MessageStatus, Status, TransportMessage};
+use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
 use std::thread;
 
 /// A service controller.
@@ -133,7 +133,6 @@ impl RouterDomain {
 
     fn remove_service(&mut self, service: &str, address: &BusAddress) {
         if let Some(s_pos) = self.services.iter().position(|s| s.name().eq(service)) {
-
             let svc = self.services.get_mut(s_pos).unwrap(); // known OK
             svc.remove_controller(address);
 
@@ -463,7 +462,11 @@ impl Router {
         }
     }
 
-    fn route_api_request(&mut self, to_addr: &BusAddress, tm: TransportMessage) -> Result<(), String> {
+    fn route_api_request(
+        &mut self,
+        to_addr: &BusAddress,
+        tm: TransportMessage,
+    ) -> Result<(), String> {
         let service = to_addr.service().unwrap(); // required for is_service
 
         if self.primary_domain.has_service(service) {
@@ -486,27 +489,27 @@ impl Router {
 
         error!("We have no service controllers for service {service}");
 
-        let payload = Payload::Status(
-            Status::new(
-                MessageStatus::ServiceNotFound,
-                &format!("Service {service} not found"),
-                "osrfServiceException"
-            )
-        );
+        let payload = Payload::Status(Status::new(
+            MessageStatus::ServiceNotFound,
+            &format!("Service {service} not found"),
+            "osrfServiceException",
+        ));
 
         let mut trace = 0;
         if tm.body().len() > 0 {
+            // It would be odd, but not impossible to receive a
+            // transport message destined for a service that has no
+            // messages in its body.
             trace = tm.body()[0].thread_trace();
         }
 
-        // TODO pull trace from request message?
         let stat = Message::new(MessageType::Status, trace, payload);
 
         let tm = TransportMessage::new_with_body(
             tm.from(), // Bounce it back
             self.listen_address.full(),
             tm.thread(),
-            stat
+            stat,
         );
 
         // Bounce-backs will always be directed back to a client
@@ -540,20 +543,20 @@ impl Router {
         );
 
         // Not all router commands require a router class.
-        let get_class = || {
+        let router_class = || {
             if let Some(rc) = tm.router_class() {
                 return Ok(rc);
             } else {
                 return Err(format!(
-                    "Message has not router class: {}",
+                    "Message has no router class: {}",
                     tm.to_json_value().dump()
                 ));
             }
         };
 
         match router_command {
-            "register" => self.handle_register(from_addr, get_class()?),
-            "unregister" => self.handle_unregister(&from_addr, get_class()?),
+            "register" => self.handle_register(from_addr, router_class()?),
+            "unregister" => self.handle_unregister(&from_addr, router_class()?),
             _ => self.deliver_information(from_addr, tm),
         }
     }

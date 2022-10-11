@@ -1,5 +1,5 @@
-pub use client::Client as Client;
-pub use conf::ClientConfig as ClientConfig;
+pub use client::Client;
+pub use conf::ClientConfig;
 
 pub mod addr;
 pub mod bus;

@@ -18,8 +18,10 @@ const CONNECT_TIMEOUT: i32 = 10;
 const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
 
 /// Response data propagated from a session to the calling Request.
-pub struct Response {
+struct Response {
+    /// Response from an API call as a JsonValue.
     value: Option<JsonValue>,
+    /// True if the Request we are a response to is complete.
     complete: bool,
 }
 
@@ -36,7 +38,7 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn new(session: Rc<RefCell<Session>>, thread_trace: usize) -> Request {
+    fn new(session: Rc<RefCell<Session>>, thread_trace: usize) -> Request {
         Request {
             session,
             complete: false,
@@ -71,7 +73,8 @@ impl Request {
     }
 }
 
-pub struct Session {
+/// Internal API and session state maintenance.
+struct Session {
     /// Link to our Client so we can ask it to pull data from the Bus.
     client: Rc<RefCell<Client>>,
 
@@ -120,12 +123,8 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    pub fn new(
-        client: Rc<RefCell<Client>>,
-        service: &str,
-        multi_domain_support: bool,
-    ) -> SessionHandle {
-        let ses = Session {
+    fn new(client: Rc<RefCell<Client>>, service: &str, multi_domain_support: bool) -> Session {
+        Session {
             client,
             service: String::from(service),
             remote_addr: None,
@@ -135,36 +134,30 @@ impl Session {
             multi_domain_support,
             backlog: Vec::new(),
             thread: util::random_number(16),
-        };
-
-        trace!("Created new session {ses}");
-
-        SessionHandle {
-            session: Rc::new(RefCell::new(ses)),
         }
     }
 
-    pub fn client(&self) -> Ref<Client> {
+    fn client(&self) -> Ref<Client> {
         self.client.borrow()
     }
 
-    pub fn client_mut(&self) -> RefMut<Client> {
+    fn client_mut(&self) -> RefMut<Client> {
         self.client.borrow_mut()
     }
 
-    pub fn service(&self) -> &str {
+    fn service(&self) -> &str {
         &self.service
     }
 
-    pub fn thread(&self) -> &str {
+    fn thread(&self) -> &str {
         &self.thread
     }
 
-    pub fn connected(&self) -> bool {
+    fn connected(&self) -> bool {
         self.connected
     }
 
-    pub fn reset(&mut self) {
+    fn reset(&mut self) {
         trace!("{self} resetting...");
         self.remote_addr = None;
         self.connected = false;
@@ -173,7 +166,7 @@ impl Session {
 
     /// Returns the address of the remote end if we are connected.  Otherwise,
     /// returns the default remote address of the service we are talking to.
-    pub fn remote_addr(&self) -> &BusAddress {
+    fn remote_addr(&self) -> &BusAddress {
         if self.connected {
             if let Some(ref ra) = self.remote_addr {
                 return ra;
@@ -197,7 +190,7 @@ impl Session {
         }
     }
 
-    pub fn recv(&mut self, thread_trace: usize, timeout: i32) -> Result<Option<Response>, String> {
+    fn recv(&mut self, thread_trace: usize, timeout: i32) -> Result<Option<Response>, String> {
         let mut timer = util::Timer::new(timeout);
 
         loop {
@@ -246,7 +239,6 @@ impl Session {
         timer: &mut util::Timer,
         msg: Message,
     ) -> Result<Option<Response>, String> {
-
         trace!("Unpacking reply: {msg:?}");
 
         if let Payload::Result(resp) = msg.payload() {
@@ -319,7 +311,7 @@ impl Session {
     }
 
     /// Issue a new API call and return the thread_trace of the sent request.
-    pub fn request<T>(&mut self, method: &str, params: Vec<T>) -> Result<usize, String>
+    fn request<T>(&mut self, method: &str, params: Vec<T>) -> Result<usize, String>
     where
         T: Into<JsonValue>,
     {
@@ -368,7 +360,7 @@ impl Session {
     }
 
     /// Establish a connected session with a remote worker.
-    pub fn connect(&mut self) -> Result<(), String> {
+    fn connect(&mut self) -> Result<(), String> {
         if self.connected() {
             warn!("{self} is already connected");
             return Ok(());
@@ -404,7 +396,7 @@ impl Session {
     /// Send a DISCONNECT to our remote worker.
     ///
     /// Does not wait for any response.  NO-OP if not connected.
-    pub fn disconnect(&mut self) -> Result<(), String> {
+    fn disconnect(&mut self) -> Result<(), String> {
         if !self.connected() {
             // Nothing to disconnect
             return Ok(());
@@ -442,11 +434,26 @@ impl Session {
     }
 }
 
+/// Public-facing Session wrapper which exports the needed session API.
 pub struct SessionHandle {
     session: Rc<RefCell<Session>>,
 }
 
 impl SessionHandle {
+    pub fn new(
+        client: Rc<RefCell<Client>>,
+        service: &str,
+        multi_domain_support: bool,
+    ) -> SessionHandle {
+        let ses = Session::new(client, service, multi_domain_support);
+
+        trace!("Created new session {ses}");
+
+        SessionHandle {
+            session: Rc::new(RefCell::new(ses)),
+        }
+    }
+
     /// Issue a new API call and return the Request
     ///
     /// params is a Vec of JSON-able things.  E.g. vec![1,2,3], vec![json::object!{a: "b"}]
