@@ -34,7 +34,7 @@ pub struct BusAddress {
 
 impl fmt::Display for BusAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "BusAddress={}", &self.full)
+        write!(f, "Address={}", &self.full)
     }
 }
 
@@ -44,7 +44,7 @@ impl BusAddress {
         let full = format!(
             "{}:client:{}:{}:{}:{}",
             BUS_ADDR_NAMESPACE,
-            &domain,
+            domain,
             &gethostname().into_string().unwrap(),
             process::id(),
             &util::random_number(8)
@@ -136,7 +136,6 @@ impl BusAddress {
     pub fn full(&self) -> &str {
         &self.full
     }
-
     pub fn namespace(&self) -> &str {
         &self.namespace
     }

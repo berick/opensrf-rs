@@ -211,6 +211,11 @@ pub struct ClientHandle {
 }
 
 impl ClientHandle {
+
+    pub fn new(client: Rc<RefCell<Client>>) -> Self {
+        ClientHandle { client }
+    }
+
     /// Create a new client session for the requested service.
     pub fn session(&mut self, service: &str) -> SessionHandle {
         SessionHandle::new(
