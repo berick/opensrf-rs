@@ -69,15 +69,16 @@ pub enum MessageStatus {
     Continue = 100,
     Ok = 200,
     Accepted = 202,
-    Nocontent = 204,
+    PartialComplete = 204,
     Complete = 205,
     Partial = 206,
     Redirected = 307,
     BadRequest = 400,
     Unauthorized = 401,
     Forbidden = 403,
-    NotFound = 404,
+    MethodNotFound = 404,
     NotAllowed = 405,
+    ServiceNotFound = 406,
     Timeout = 408,
     Expfailed = 417,
     InternalServErerror = 500,
@@ -99,15 +100,16 @@ impl From<isize> for MessageStatus {
             100 => MessageStatus::Continue,
             200 => MessageStatus::Ok,
             202 => MessageStatus::Accepted,
-            204 => MessageStatus::Nocontent,
+            204 => MessageStatus::PartialComplete,
             205 => MessageStatus::Complete,
             206 => MessageStatus::Partial,
             307 => MessageStatus::Redirected,
             400 => MessageStatus::BadRequest,
             401 => MessageStatus::Unauthorized,
             403 => MessageStatus::Forbidden,
-            404 => MessageStatus::NotFound,
+            404 => MessageStatus::MethodNotFound,
             405 => MessageStatus::NotAllowed,
+            406 => MessageStatus::ServiceNotFound,
             408 => MessageStatus::Timeout,
             417 => MessageStatus::Expfailed,
             500 => MessageStatus::InternalServErerror,
@@ -133,8 +135,9 @@ impl Into<&'static str> for MessageStatus {
             MessageStatus::Complete => "Request Complete",
             MessageStatus::BadRequest => "Bad Request",
             MessageStatus::Timeout => "Timeout",
-            MessageStatus::NotFound => "Not Found",
+            MessageStatus::MethodNotFound => "Method Not Found",
             MessageStatus::NotAllowed => "Not Allowed",
+            MessageStatus::ServiceNotFound => "Service Not Found",
             MessageStatus::InternalServErerror => "Internal Server Error",
             _ => "See Status Code",
         }
@@ -531,8 +534,6 @@ pub struct Result {
 
     status_label: String,
 
-    /// osrfResult, osrfResultPartial, osrfResultPartialComplete
-    /// TODO: enum?
     msg_class: String,
 
     /// API response value.
@@ -677,6 +678,13 @@ impl Status {
         };
 
         super::classified::ClassifiedJson::classify(&obj, &self.msg_class)
+    }
+}
+
+impl fmt::Display for Status {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "stat={} class={} label={}",
+            self.status, self.msg_class, self.status_label)
     }
 }
 

@@ -41,18 +41,16 @@ fn main() -> Result<(), String> {
     pub_client.send_router_command(PUBLIC_DOMAIN, "register", Some(PUBLIC_SERVICE), false)?;
 
     // Send a x-domain request
+    /* This only works if talking to a legit service
     let mut ses = pvt_client.session(PUBLIC_SERVICE);
-    let mut req = ses.request("opensrf.system.echo", vec!["Hello", "Goodbye"]);
+    let mut req = ses.request("opensrf.system.echo", vec!["Hello", "Goodbye"])?;
 
-    // See if our request was correctly routed.
-    let resp_op = pub_client
-        .client_mut()
-        .bus_mut()
-        .recv(10, Some(pub_addr.full()))?;
-
-    if let Some(resp) = resp_op {
-        println!("Routed message arrived: {}", resp.to_json_value().dump());
+    if let Some(resp) = req.recv(5)? {
+        println!("Routed message arrived: {}", resp.dump());
+    } else {
+        eprintln!("Routed message response never arrived!");
     }
+    */
 
     if let Some(jv) = pvt_client.send_router_command(PRIVATE_DOMAIN, "summarize", None, true)? {
         println!("Router command returned: {}", jv.dump());
@@ -62,6 +60,16 @@ fn main() -> Result<(), String> {
         println!("Router command returned: {}", jv.dump());
     }
 
+
+    // Send a request for a private service on our public router.
+    // This should result in a failure on receive.
+    let mut ses = pub_client.session(PRIVATE_SERVICE);
+    let mut req = ses.request("opensrf.system.echo", vec!["Hello", "Goodbye"])?;
+
+    // See if our request was correctly routed.
+    if let Err(e) = req.recv(5) {
+        println!("This should fail:: {e}");
+    }
 
     pvt_client.send_router_command(PRIVATE_DOMAIN, "unregister", Some(PRIVATE_SERVICE), false)?;
     pub_client.send_router_command(PRIVATE_DOMAIN, "unregister", Some(PUBLIC_SERVICE), false)?;

@@ -5,6 +5,7 @@ use super::message::MessageStatus;
 use super::message::MessageType;
 use super::message::Method;
 use super::message::Payload;
+use super::message::Status;
 use super::message::TransportMessage;
 use super::util;
 use json::JsonValue;
@@ -245,6 +246,9 @@ impl Session {
         timer: &mut util::Timer,
         msg: Message,
     ) -> Result<Option<Response>, String> {
+
+        trace!("Unpacking reply: {msg:?}");
+
         if let Payload::Result(resp) = msg.payload() {
             // .to_owned() because this message is about to get dropped.
             let mut value = resp.content().to_owned();
@@ -262,7 +266,7 @@ impl Session {
         let trace = msg.thread_trace();
 
         if let Payload::Status(stat) = msg.payload() {
-            match self.unpack_status_message(trace, timer, stat.status()) {
+            match self.unpack_status_message(trace, timer, &stat) {
                 Ok(v) => {
                     return Ok(v);
                 }
@@ -281,39 +285,32 @@ impl Session {
         &mut self,
         trace: usize,
         timer: &mut util::Timer,
-        stat: &MessageStatus,
+        statmsg: &Status,
     ) -> Result<Option<Response>, String> {
-        let err_msg;
+        let stat = statmsg.status();
 
         match stat {
             MessageStatus::Ok => {
                 trace!("{self} Marking self as connected");
                 self.connected = true;
-                return Ok(None);
+                Ok(None)
             }
             MessageStatus::Continue => {
                 timer.reset();
-                return Ok(None);
+                Ok(None)
             }
             MessageStatus::Complete => {
                 trace!("{self} request {trace} complete");
-                return Ok(Some(Response {
+                Ok(Some(Response {
                     value: None,
                     complete: true,
-                }));
+                }))
             }
-            MessageStatus::Timeout => {
-                err_msg = format!("{self} request {trace} timed out");
+            MessageStatus::Partial | MessageStatus::PartialComplete => {
+                Err(format!("{self} message chunking not currently supported"))
             }
-            MessageStatus::NotFound => {
-                err_msg = format!("{self} method bot found for request {trace}: {stat:?}");
-            }
-            _ => {
-                err_msg = format!("{self} unexpected status message for request {trace} {stat:?}");
-            }
+            _ => Err(format!("{self} request {trace} failed: {}", statmsg)),
         }
-
-        Err(err_msg)
     }
 
     fn incr_thread_trace(&mut self) -> usize {

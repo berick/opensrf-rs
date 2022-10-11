@@ -4,7 +4,7 @@ use opensrf::addr::BusAddress;
 use opensrf::bus::Bus;
 use opensrf::conf::BusConfig;
 use opensrf::conf::ClientConfig;
-use opensrf::message::TransportMessage;
+use opensrf::message::{Message, MessageType, Payload, MessageStatus, Status, TransportMessage};
 use std::thread;
 
 /// A service controller.
@@ -463,8 +463,8 @@ impl Router {
         }
     }
 
-    fn route_api_request(&mut self, addr: &BusAddress, tm: TransportMessage) -> Result<(), String> {
-        let service = addr.service().unwrap(); // required for is_service
+    fn route_api_request(&mut self, to_addr: &BusAddress, tm: TransportMessage) -> Result<(), String> {
+        let service = to_addr.service().unwrap(); // required for is_service
 
         if self.primary_domain.has_service(service) {
             self.primary_domain.route_count += 1;
@@ -484,12 +484,35 @@ impl Router {
             }
         }
 
-        // TODO communicate this to the caller.
+        error!("We have no service controllers for service {service}");
 
-        return Err(format!(
-            "We have no service controllers for service {}",
-            service
-        ));
+        let payload = Payload::Status(
+            Status::new(
+                MessageStatus::ServiceNotFound,
+                &format!("Service {service} not found"),
+                "osrfServiceException"
+            )
+        );
+
+        let mut trace = 0;
+        if tm.body().len() > 0 {
+            trace = tm.body()[0].thread_trace();
+        }
+
+        // TODO pull trace from request message?
+        let stat = Message::new(MessageType::Status, trace, payload);
+
+        let tm = TransportMessage::new_with_body(
+            tm.from(), // Bounce it back
+            self.listen_address.full(),
+            tm.thread(),
+            stat
+        );
+
+        // Bounce-backs will always be directed back to a client
+        // on our primary domain, since clients only ever talk to
+        // the router on their own domain.
+        self.primary_domain.send_to_domain(tm)
     }
 
     fn handle_router_command(&mut self, tm: TransportMessage) -> Result<(), String> {
