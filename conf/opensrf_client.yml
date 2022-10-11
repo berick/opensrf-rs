@@ -12,20 +12,17 @@ logging:
 
 # ---- EXPERIMENTAL FORMAT -----
 
-# Named logging configs.
+# Canned logging configs.
 loggers:
   - name: service-logger
-    logfile: syslog
     loglevel: info
     syslog-facility: local0
     actlog-facility: local1
   - name: gateway-logger
-    logfile: syslog
     loglevel: info
     syslog-facility: local6
     actlog-facility: local1
   - name: router-logger
-    logfile: syslog
     loglevel: info
     syslog-facility: local2
 
@@ -40,9 +37,9 @@ domains:
     host: private.localhost
     port: 6379
 
-# Accounts are used for logging in to the message bus.
-# Account name are free-from and only used in this configuration file to
-# link accounts to connections and routers.
+# Accounts are used for logging in to the message bus.  Account
+# names are only used in this configuration file to link accounts to
+# connections and routers.
 accounts:
   - name: public-account
     domain: public-domain
@@ -54,7 +51,8 @@ accounts:
     password: password
 
 # Some connections have well-known names ("service", "gateway", "srfsh"),
-# but other free-form names can be added.
+# but additional connections can be added for use with scripts and other
+# custom clients.
 connections:
   - name: service
     account: private-account
@@ -66,23 +64,16 @@ connections:
     account: private-account
     logger: service-logger
 
-# Router names are used as part of the destination address for each
-# router during service registration, deregistration, and other
-# router-specific commands.  Multiple routers can be run on a single
-# domain.
+# One router per domain.  Domain is implied by the account.
 routers:
-  - name: private-router
-    account: private-account
+  - account: private-account
     logger: router-logger
-  - name: public-router
-    account: public-account
+  - account: public-account
     logger: router-logger
-    # Some routers only host certain services
+    # Only services in this group should register with this router.
     services: public-services
 
 # Named groups of services.
-# By default, there is a "public-services" group which is those accessible
-# via the default "public-router" router.
 service-groups:
   - name: public-services
     services:
@@ -109,7 +100,8 @@ service-groups:
       - open-ils.url_verify
       - open-ils.vandelay
 
-# Avoid logging call parameters for these API's at INFO level or below.
+# Avoid logging parameters for API calls (at or below INFO level) whose
+# API name is a left-anchored match to any of the following method names.
 log-protect:
   - open-ils.auth.authenticate.verify
   - open-ils.auth.authenticate.complete
