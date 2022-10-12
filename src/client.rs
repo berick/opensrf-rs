@@ -209,7 +209,11 @@ impl fmt::Display for Client {
 /// Wrapper around a Client Ref so we can share the same client
 /// within a given thread.
 ///
-/// When a new client is needed, clone the ClientHandle.
+/// Wrapping the Ref in a struct allows us to present a client-like
+/// API to the caller.  I.e. the caller is not required to .borrow() /
+/// .borrow_mut() directly when performing actions against the client Ref.
+///
+/// When a new client Ref is needed, clone the ClientHandle.
 pub struct ClientHandle {
     client: Rc<RefCell<Client>>,
 }

@@ -239,7 +239,6 @@ impl Session {
         timer: &mut util::Timer,
         msg: Message,
     ) -> Result<Option<Response>, String> {
-        trace!("Unpacking reply: {msg:?}");
 
         if let Payload::Result(resp) = msg.payload() {
             // .to_owned() because this message is about to get dropped.
