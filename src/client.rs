@@ -206,7 +206,7 @@ impl fmt::Display for Client {
     }
 }
 
-/// Wrapper around a Client Ref so we can share the same client
+/// Wrapper around a Client Ref so we can easily share a client
 /// within a given thread.
 ///
 /// Wrapping the Ref in a struct allows us to present a client-like

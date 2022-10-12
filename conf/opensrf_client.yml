@@ -9,96 +9,93 @@ message_bus:
 logging:
   log4rs_config: conf/log4rs.yml
 
-
 # ---- EXPERIMENTAL FORMAT -----
 
-# Canned logging configs.
-loggers:
-  - name: service-logger
-    loglevel: info
-    syslog-facility: local0
-    actlog-facility: local1
-  - name: gateway-logger
-    loglevel: info
-    syslog-facility: local6
-    actlog-facility: local1
-  - name: router-logger
-    loglevel: info
-    syslog-facility: local2
+message-bus:
 
-# Domains where the message bus operates.
-# Domain names are free-form and only used in this configuration file
-# to link domains to accounts, connections, and routers.
-domains:
-  - name: public-domain
-    host: public.localhost
-    port: 6379
-  - name: private-domain
-    host: private.localhost
-    port: 6379
+  # List all routable domains in our cluster.
+  # We assume one OpenSRF Router is running on each of domain.
+  #
+  # If a Domain has a "hosted-services" entry, services should only
+  # register with the router at the domain if their service name is
+  # in the list.
+  domains:
+    - name: private.brick01
+    - name: public.brick01
+      hosted-services: public-services
+    - name: private.brick02
+    - name: public.brick02
+      hosted-services: public-services
+    # port: 6379
 
-# Accounts are used for logging in to the message bus.  Account
-# names are only used in this configuration file to link accounts to
-# connections and routers.
-accounts:
-  - name: public-account
-    domain: public-domain
-    username: opensrf@public
-    password: password
-  - name: private-account
-    domain: private-domain
-    username: opensrf@private
-    password: password
+  # Accounts used for logging in to the message bus.
+  # Accounts must be consistent across all domains for x-domain routing.
+  #
+  # Account names are free-form and have no meaning outside of this 
+  # configuration file.
+  #
+  # Account usernames are only used for logging in to Redis, where 
+  # read/write permissions are enforced per account.  The usernames
+  # have no meaning within the application.
+  accounts:
+    private-account:
+      username: opensrf@private
+      password: password
+    public-account:
+      username: opensrf@public
+      password: password
 
-# Some connections have well-known names ("service", "gateway", "srfsh"),
-# but additional connections can be added for use with scripts and other
-# custom clients.
-connections:
-  - name: service
-    account: private-account
-    logger: service-logger
-  - name: gateway
-    account: public-account
-    logger: gateway-logger
-  - name: srfsh
-    account: private-account
-    logger: service-logger
-
-# One router per domain.  Domain is implied by the account.
-routers:
-  - account: private-account
-    logger: router-logger
-  - account: public-account
-    logger: router-logger
-    # Only services in this group should register with this router.
-    services: public-services
+  # Specify login accounts and logging configs for well known connection
+  # types (e.g. "service", "gateway", "srfsh").
+  #
+  # Additional connection types can be added for use with scripts and
+  # other custom clients.
+  connections:
+    service:
+      account: private-account
+      loglevel: info
+      syslog-facility: local0
+      actlog-facility: local1
+    gateway:
+      account: public-account
+      loglevel: info
+      syslog-facility: local6
+      actlog-facility: local1
+    srfsh:
+      account: private-account
+      loglevel: debug
+      syslog-facility: local0
+    router:
+      account: private-account
+      loglevel: info
+      syslog-facility: local2
 
 # Named groups of services.
+# Names are free-form and have no meaning outside of this configuration file.
 service-groups:
-  - name: public-services
-    services:
-      - opensrf.math
-      - open-ils.actor
-      - open-ils.acq
-      - open-ils.auth
-      - open-ils.auth_proxy
-      - open-ils.booking
-      - open-ils.cat
-      - open-ils.circ
-      - open-ils.collections
-      - open-ils.courses
-      - open-ils.curbside
-      - open-ils.ebook_api
-      - open-ils.fielder
-      - open-ils.pcrud
-      - open-ils.permacrud
-      - open-ils.reporter
-      - open-ils.resolver
-      - open-ils.search
-      - open-ils.serial
-      - open-ils.supercat
-      - open-ils.url_verify
-      - open-ils.vandelay
+  public-services:
+    - opensrf.math
+    - open-ils.actor
+    - open-ils.acq
+    - open-ils.auth
+    - open-ils.auth_proxy
+    - open-ils.booking
+    - open-ils.cat
+    - open-ils.circ
+    - open-ils.collections
+    - open-ils.courses
+    - open-ils.curbside
+    - open-ils.ebook_api
+    - open-ils.fielder
+    - open-ils.pcrud
+    - open-ils.permacrud
+    - open-ils.reporter
+    - open-ils.resolver
+    - open-ils.search
+    - open-ils.serial
+    - open-ils.supercat
+    - open-ils.url_verify
+    - open-ils.vandelay
 
 # Avoid logging parameters for API calls (at or below INFO level) whose
 # API name is a left-anchored match to any of the following method names.
@@ -118,4 +115,3 @@ log-protect:
   - open-ils.search.z3950.apply_credentials
   - open-ils.geo
   - open-ils.actor.geo
-
