@@ -206,11 +206,19 @@ impl fmt::Display for Client {
     }
 }
 
+/// Wrapper around a Client Ref so we can share the same client
+/// within a given thread.
+///
+/// When a new client is needed, clone the ClientHandle.
 pub struct ClientHandle {
     client: Rc<RefCell<Client>>,
 }
 
 impl ClientHandle {
+
+    pub fn clone(&self) -> Self {
+        ClientHandle { client: self.client.clone() }
+    }
 
     pub fn new(client: Rc<RefCell<Client>>) -> Self {
         ClientHandle { client }
