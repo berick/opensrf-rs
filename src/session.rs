@@ -239,7 +239,6 @@ impl Session {
         timer: &mut util::Timer,
         msg: Message,
     ) -> Result<Option<Response>, String> {
-
         if let Payload::Result(resp) = msg.payload() {
             // .to_owned() because this message is about to get dropped.
             let mut value = resp.content().to_owned();
@@ -300,7 +299,10 @@ impl Session {
             MessageStatus::Partial | MessageStatus::PartialComplete => {
                 Err(format!("{self} message chunking not currently supported"))
             }
-            _ => Err(format!("{self} request {trace} failed: {}", statmsg)),
+            _ => {
+                self.reset();
+                return Err(format!("{self} request {trace} failed: {}", statmsg));
+            }
         }
     }
 

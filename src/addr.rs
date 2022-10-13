@@ -47,7 +47,7 @@ impl BusAddress {
             domain,
             &gethostname().into_string().unwrap(),
             process::id(),
-            &util::random_number(8)
+            &util::random_number(6)
         );
 
         BusAddress {

@@ -81,6 +81,8 @@ impl Client {
     }
 
     pub fn get_domain_bus(&mut self, domain: &str) -> Result<&mut bus::Bus, String> {
+        log::trace!("Loading bus connection for domain: {domain}");
+
         if domain.eq(self.domain()) {
             Ok(&mut self.bus)
         } else {
@@ -178,7 +180,8 @@ impl Client {
             return Ok(None);
         }
 
-        match bus.recv(DEFAULT_ROUTER_COMMAND_TIMEOUT, None)? {
+        // Always listen on our primary bus.
+        match self.bus.recv(DEFAULT_ROUTER_COMMAND_TIMEOUT, None)? {
             Some(tm) => match tm.router_reply() {
                 Some(reply) => match json::parse(reply) {
                     Ok(jv) => Ok(Some(jv)),
@@ -219,9 +222,10 @@ pub struct ClientHandle {
 }
 
 impl ClientHandle {
-
     pub fn clone(&self) -> Self {
-        ClientHandle { client: self.client.clone() }
+        ClientHandle {
+            client: self.client.clone(),
+        }
     }
 
     pub fn new(client: Rc<RefCell<Client>>) -> Self {

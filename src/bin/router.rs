@@ -179,7 +179,11 @@ impl RouterDomain {
 
     /// Send a message to this domain via our domain connection.
     fn send_to_domain(&mut self, tm: TransportMessage) -> Result<(), String> {
-        trace!("send_to_domain() routing API call to {}", tm.to());
+        trace!(
+            "send_to_domain({}) routing message to {}",
+            self.domain(),
+            tm.to()
+        );
 
         let bus = match &mut self.bus {
             Some(b) => b,

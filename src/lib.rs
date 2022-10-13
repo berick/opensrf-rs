@@ -1,7 +1,7 @@
-pub use session::SessionHandle;
 pub use client::Client;
 pub use client::ClientHandle;
 pub use conf::ClientConfig;
+pub use session::SessionHandle;
 
 pub mod addr;
 pub mod bus;

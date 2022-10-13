@@ -6,7 +6,7 @@ use std::time::Instant;
 pub fn random_number(size: usize) -> String {
     let mut rng = rand::thread_rng();
     let num: u64 = rng.gen_range(100_000_000_000..1_000_000_000_000);
-    format!("{:0width$}", num, width = size)
+    format!("{:0width$}", num, width = size)[0..size].to_string()
 }
 
 /// Converts a JSON number or string to an isize if possible

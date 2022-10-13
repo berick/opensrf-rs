@@ -39,10 +39,10 @@ message-bus:
   # have no meaning within the application.
   accounts:
     private-account:
-      username: opensrf@private
+      username: opensrf-private
       password: password
     public-account:
-      username: opensrf@public
+      username: opensrf-public
       password: password
 
   # Specify login accounts and logging configs for well known connection

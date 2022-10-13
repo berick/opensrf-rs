@@ -37,6 +37,7 @@ fn main() -> Result<(), String> {
     let mut pvt_client2 = Client::new(conf2)?;
     let mut pub_client = Client::new(conf3)?;
 
+    /*
     let pvt_addr = BusAddress::new_for_service(PRIVATE_SERVICE);
     let pub_addr = BusAddress::new_for_service(PUBLIC_SERVICE);
 
@@ -50,6 +51,7 @@ fn main() -> Result<(), String> {
         .client_mut()
         .bus_mut()
         .setup_stream(Some(pub_addr.full()))?;
+    */
 
     pvt_client.send_router_command(PRIVATE_DOMAIN, "register", Some(PRIVATE_SERVICE), false)?;
     pvt_client2.send_router_command(PRIVATE_DOMAIN, "register", Some(PUBLIC_SERVICE), false)?;
@@ -62,18 +64,18 @@ fn main() -> Result<(), String> {
     if let Some(resp) = req.recv(1)? {
         println!("Routed message arrived: {}", resp.dump());
     } else {
-        println!("Routed request did not receive a reply.  Possibly {PUBLIC_SERVICE} is not running");
+        println!(
+            "Routed request did not receive a reply.  Possibly {PUBLIC_SERVICE} is not running"
+        );
     }
 
-    /*
     if let Some(jv) = pvt_client.send_router_command(PRIVATE_DOMAIN, "summarize", None, true)? {
         println!("Router command returned: {}", jv.dump());
     }
 
-    if let Some(jv) = pub_client.send_router_command(PUBLIC_DOMAIN, "summarize", None, true)? {
+    if let Some(jv) = pvt_client.send_router_command(PUBLIC_DOMAIN, "summarize", None, true)? {
         println!("Router command returned: {}", jv.dump());
     }
-    */
 
     // Send a request for a private service on our public router.
     // This should result in a failure on receive.
