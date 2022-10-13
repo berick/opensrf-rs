@@ -1,6 +1,7 @@
 use std::fs;
 use yaml_rust::yaml;
 use yaml_rust::YamlLoader;
+use syslog;
 
 const DEFAULT_BUS_PORT: u16 = 6379;
 const DEFAULT_BUS_DOMAIN: &str = "localhost";
@@ -185,3 +186,142 @@ impl ClientConfig {
         })
     }
 }
+
+// -------
+
+#[derive(Debug, Clone)]
+pub struct ServiceGroup {
+    pub name: String,
+    pub services: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BusAccount {
+    pub name: String,
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct BusDomain {
+    pub domain: String,
+    pub service_group: Option<ServiceGroup>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BusConnection {
+    pub name: String,
+    pub account: BusAccount,
+    pub log_level: log::Level,
+    pub log_facility: syslog::Facility,
+    pub act_facility: syslog::Facility,
+}
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub connections: Vec<BusConnection>,
+    pub domain: Vec<BusDomain>,
+    pub service_groups: Vec<ServiceGroup>,
+    pub log_protect: Vec<String>,
+}
+
+impl Config {
+
+    /// Load configuration from a YAML file
+    pub fn from_file(filename: &str) -> Result<Self, String> {
+        let op = fs::read_to_string(filename);
+
+        if let Err(e) = op {
+            return Err(format!(
+                "Error reading configuration file: file='{}' {:?}",
+                filename, e
+            ));
+        }
+
+        Config::from_string(&op.unwrap())
+    }
+
+    pub fn from_string(yaml_text: &str) -> Result<Self, String> {
+
+        let op = YamlLoader::load_from_str(yaml_text);
+
+        if let Err(e) = op {
+            return Err(format!("Error parsing configuration file: {:?}", e));
+        }
+
+        let docs = op.unwrap();
+        let root = &docs[0];
+
+        let mut conf = Config {
+            connections: Vec::new(),
+            domain: Vec::new(),
+            service_groups: Vec::new(),
+            log_protect: Vec::new(),
+        };
+
+        conf.apply_service_groups(&root["service-groups"]);
+        conf.apply_message_bus_config(&root["message-bus"])?;
+
+        println!("CONF: {conf:?}");
+
+        Ok(conf)
+    }
+
+    fn apply_message_bus_config(&mut self, bus_conf: &yaml::Yaml) -> Result<(), String> {
+
+        self.apply_domains(&bus_conf["domains"])?;
+
+        Ok(())
+    }
+
+    fn apply_service_groups(&mut self, groups: &yaml::Yaml) {
+
+        let hash = match groups.as_hash() {
+            Some(h) => h,
+            None => { return; }
+        };
+
+        for (name, list) in hash {
+            let name = name.as_str().unwrap();
+            let list = list.as_vec().unwrap();
+            let services =
+                list.iter().map(|s| s.as_str().unwrap().to_string()).collect();
+
+            self.service_groups.push(ServiceGroup {
+                name: name.to_string(),
+                services: services
+            });
+        }
+    }
+
+    fn apply_domains(&mut self, domains: &yaml::Yaml) -> Result<(), String> {
+
+        let domains = match domains.as_vec() {
+            Some(d) => d,
+            None => {
+                return Err(format!("message-bus 'domains' should be a list"));
+            }
+        };
+
+        for domain_conf in domains {
+
+            let name = match domain_conf["name"].as_str() {
+                Some(n) => n,
+                None => { continue; }
+            };
+
+            /*
+            let mut domain = BusDomain {
+                domain: name.to_string(),
+                hosted_services:
+            };
+
+            self.domains.push(domain);
+            */
+        }
+
+        Ok(())
+    }
+}
+
+

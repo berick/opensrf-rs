@@ -16,9 +16,8 @@ message-bus:
   # List all routable domains in our cluster.
   # We assume one OpenSRF Router is running on each of domain.
   #
-  # If a Domain has a "hosted-services" entry, services should only
-  # register with the router at the domain if their service name is
-  # in the list.
+  # If a Domain has a "hosted-services" entry, only services in the list
+  # should register with the router at the domain.
   domains:
     - name: private.brick01
     - name: public.brick01
@@ -45,11 +44,11 @@ message-bus:
       username: opensrf-public
       password: password
 
-  # Specify login accounts and logging configs for well known connection
-  # types (e.g. "service", "gateway", "srfsh").
+  # Well-known connection types, with option to define custom types
+  # for use with local scripts, etc.
   #
-  # Additional connection types can be added for use with scripts and
-  # other custom clients.
+  # These link connection types to their bus accounts and define
+  # their logging configs.
   connections:
     service:
       account: private-account
