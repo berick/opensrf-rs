@@ -2,6 +2,7 @@ use std::fs;
 use yaml_rust::yaml;
 use yaml_rust::YamlLoader;
 use syslog;
+use std::str::FromStr;
 
 const DEFAULT_BUS_PORT: u16 = 6379;
 const DEFAULT_BUS_DOMAIN: &str = "localhost";
@@ -205,7 +206,7 @@ pub struct BusAccount {
 #[derive(Debug, Clone)]
 pub struct BusDomain {
     pub domain: String,
-    pub service_group: Option<ServiceGroup>,
+    pub hosted_services: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -214,13 +215,14 @@ pub struct BusConnection {
     pub account: BusAccount,
     pub log_level: log::Level,
     pub log_facility: syslog::Facility,
-    pub act_facility: syslog::Facility,
+    pub act_facility: Option<syslog::Facility>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Config {
     pub connections: Vec<BusConnection>,
-    pub domain: Vec<BusDomain>,
+    pub accounts: Vec<BusAccount>,
+    pub domains: Vec<BusDomain>,
     pub service_groups: Vec<ServiceGroup>,
     pub log_protect: Vec<String>,
 }
@@ -228,6 +230,9 @@ pub struct Config {
 impl Config {
 
     /// Load configuration from a YAML file
+    ///
+    /// May panic on invalid values (e.g. invalid log level) or invalid
+    /// Yaml config structures.
     pub fn from_file(filename: &str) -> Result<Self, String> {
         let op = fs::read_to_string(filename);
 
@@ -253,8 +258,9 @@ impl Config {
         let root = &docs[0];
 
         let mut conf = Config {
+            accounts: Vec::new(),
             connections: Vec::new(),
-            domain: Vec::new(),
+            domains: Vec::new(),
             service_groups: Vec::new(),
             log_protect: Vec::new(),
         };
@@ -262,27 +268,46 @@ impl Config {
         conf.apply_service_groups(&root["service-groups"]);
         conf.apply_message_bus_config(&root["message-bus"])?;
 
+        if let Some(arr) = root["log-protect"].as_vec() {
+            for lp in arr {
+                conf.log_protect.push(conf.unpack_yaml_string(lp)?);
+            }
+        }
+
         println!("CONF: {conf:?}");
 
         Ok(conf)
     }
 
+    fn unpack_yaml_string(&self, thing: &yaml::Yaml) -> Result<String, String> {
+        match thing.as_str() {
+            Some(s) => Ok(s.to_string()),
+            None => Err(format!("Cannot coerce into string: {thing:?}"))
+        }
+    }
+
+    fn get_yaml_string_at(&self, thing: &yaml::Yaml, key: &str) -> Result<String, String> {
+        self.unpack_yaml_string(&thing[key])
+    }
+
     fn apply_message_bus_config(&mut self, bus_conf: &yaml::Yaml) -> Result<(), String> {
 
+        self.apply_accounts(&bus_conf["accounts"])?;
         self.apply_domains(&bus_conf["domains"])?;
+        self.apply_connections(&bus_conf["connections"])?;
 
         Ok(())
     }
 
-    fn apply_service_groups(&mut self, groups: &yaml::Yaml) {
+    fn apply_service_groups(&mut self, groups: &yaml::Yaml) -> Result<(), String>{
 
         let hash = match groups.as_hash() {
             Some(h) => h,
-            None => { return; }
+            None => { return Ok(()); }
         };
 
         for (name, list) in hash {
-            let name = name.as_str().unwrap();
+            let name = self.unpack_yaml_string(name)?;
             let list = list.as_vec().unwrap();
             let services =
                 list.iter().map(|s| s.as_str().unwrap().to_string()).collect();
@@ -292,6 +317,22 @@ impl Config {
                 services: services
             });
         }
+
+        Ok(())
+    }
+
+    fn apply_accounts(&mut self, accounts: &yaml::Yaml) -> Result<(), String> {
+        for (name, value) in accounts.as_hash().unwrap() {
+            self.accounts.push(
+                BusAccount {
+                    name: self.unpack_yaml_string(&name)?,
+                    username: self.get_yaml_string_at(&value, "username")?,
+                    password: self.get_yaml_string_at(&value, "password")?
+                }
+            );
+        }
+
+        Ok(())
     }
 
     fn apply_domains(&mut self, domains: &yaml::Yaml) -> Result<(), String> {
@@ -304,20 +345,72 @@ impl Config {
         };
 
         for domain_conf in domains {
+            let name = self.get_yaml_string_at(&domain_conf, "name")?;
 
-            let name = match domain_conf["name"].as_str() {
-                Some(n) => n,
-                None => { continue; }
-            };
-
-            /*
             let mut domain = BusDomain {
                 domain: name.to_string(),
-                hosted_services:
+                hosted_services: None,
             };
 
+            // "hosted-services" is optional
+            if let Some(name) = domain_conf["hosted-services"].as_str() {
+                match self.service_groups.iter().filter(|g| g.name.eq(name)).next() {
+                    Some(group) => {
+                        domain.hosted_services = Some(group.services.clone());
+                    }
+                    None => {
+                        return Err(format!("No such service group: {name}"));
+                    }
+                }
+            }
+
             self.domains.push(domain);
-            */
+        }
+
+        Ok(())
+    }
+
+    fn apply_connections(&mut self, connections: &yaml::Yaml) -> Result<(), String> {
+
+        let hash = match connections.as_hash() {
+            Some(h) => h,
+            None => {
+                return Err(format!("We have no connections!"));
+            }
+        };
+
+        for (name, connection) in hash {
+
+            let name = self.unpack_yaml_string(name)?;
+            let act_name = self.get_yaml_string_at(&connection, "account")?;
+
+            let acct = match self.accounts.iter().filter(|a| a.name.eq(&act_name)).next() {
+                Some(a) => a,
+                None => {
+                    return Err(format!("No such account: {name}"));
+                }
+            };
+
+            let level = self.get_yaml_string_at(&connection, "loglevel")?;
+            let level = log::Level::from_str(&level).unwrap();
+
+            let facility = self.get_yaml_string_at(&connection, "syslog-facility")?;
+            let facility = syslog::Facility::from_str(&facility).unwrap();
+
+            let mut actfac = None;
+            if let Some(af) = connection["actlog-facility"].as_str() {
+                actfac = Some(syslog::Facility::from_str(&af).unwrap());
+            }
+
+            let con = BusConnection {
+                name,
+                account: acct.clone(),
+                log_level: level,
+                log_facility: facility,
+                act_facility: actfac,
+            };
+
+            self.connections.push(con);
         }
 
         Ok(())
