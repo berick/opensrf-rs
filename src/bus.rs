@@ -1,5 +1,5 @@
 use super::addr::BusAddress;
-use super::conf::BusConfig;
+use super::conf;
 use super::message::TransportMessage;
 use log::{debug, error, trace};
 use redis::streams::{StreamId, StreamKey, StreamMaxlen, StreamReadOptions, StreamReadReply};
@@ -17,9 +17,8 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(bus_config: &BusConfig) -> Result<Self, String> {
-        let info = Bus::connection_info(bus_config)?;
-        let domain = Bus::host_from_connection_info(&info).to_string();
+    pub fn new(config: &conf::BusConnection) -> Result<Self, String> {
+        let info = Bus::connection_info(config)?;
 
         trace!("Bus::new() connecting to {:?}", info);
 
@@ -37,10 +36,10 @@ impl Bus {
             }
         };
 
-        let addr = BusAddress::new_for_client(&domain);
+        let addr = BusAddress::new_for_client(config.domain().name());
 
         let mut bus = Bus {
-            domain,
+            domain: config.domain().name().to_string(),
             connection,
             address: addr,
         };
@@ -71,25 +70,20 @@ impl Bus {
         Ok(())
     }
 
-    fn host_from_connection_info(info: &ConnectionInfo) -> String {
-        match info.addr {
-            ConnectionAddr::Tcp(ref host, _port) => host.to_string(),
-            _ => panic!("Tcp only support protocol"),
-        }
-    }
-
     /// Generates the Redis connection Info
-    fn connection_info(bus_config: &BusConfig) -> Result<ConnectionInfo, String> {
+    fn connection_info(config: &conf::BusConnection) -> Result<ConnectionInfo, String> {
         // Build the connection info by hand because it gives us more
         // flexibility/control than compiling a URL string.
 
+        let acct = config.connection_type().account();
         let redis_con = RedisConnectionInfo {
             db: 0,
-            username: Some(bus_config.username().to_string()),
-            password: Some(bus_config.password().to_string()),
+            username: Some(acct.username().to_string()),
+            password: Some(acct.password().to_string()),
         };
 
-        let con_addr = ConnectionAddr::Tcp(bus_config.domain().to_string(), bus_config.port());
+        let con_addr = ConnectionAddr::Tcp(
+            config.domain().name().to_string(), config.domain().port());
 
         Ok(ConnectionInfo {
             addr: con_addr,

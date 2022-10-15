@@ -19,11 +19,8 @@ message-bus:
   # If a Domain has a "hosted-services" entry, only services in the list
   # should register with the router at the domain.
   domains:
-    - name: private.brick01
-    - name: public.brick01
-      hosted-services: public-services
-    - name: private.brick02
-    - name: public.brick02
+    - name: private.localhost
+    - name: public.localhost
       hosted-services: public-services
     # port: 6379
 

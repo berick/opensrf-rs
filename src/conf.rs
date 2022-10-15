@@ -3,6 +3,8 @@ use yaml_rust::yaml;
 use yaml_rust::YamlLoader;
 use syslog;
 use std::str::FromStr;
+use std::collections::HashMap;
+//use std::default::Default;
 
 const DEFAULT_BUS_PORT: u16 = 6379;
 const DEFAULT_BUS_DOMAIN: &str = "localhost";
@@ -192,58 +194,110 @@ impl ClientConfig {
 
 #[derive(Debug, Clone)]
 pub struct ServiceGroup {
-    pub name: String,
-    pub services: Vec<String>,
+    name: String,
+    services: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct BusAccount {
-    pub name: String,
-    pub username: String,
-    pub password: String,
+    name: String,
+    username: String,
+    password: String,
+}
+
+impl BusAccount {
+    pub fn username(&self) -> &str {
+        &self.username
+    }
+    pub fn password(&self) -> &str {
+        &self.password
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct BusDomain {
-    pub domain: String,
-    pub hosted_services: Option<Vec<String>>,
+    name: String,
+    port: u16,
+    hosted_services: Option<Vec<String>>,
+}
+
+impl BusDomain {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BusConnectionType {
+    name: String,
+    account: BusAccount,
+    log_level: log::Level,
+    log_facility: syslog::Facility,
+    act_facility: Option<syslog::Facility>,
+}
+
+impl BusConnectionType {
+    pub fn account(&self) -> &BusAccount {
+        &self.account
+    }
+    pub fn log_level(&self) -> log::Level {
+        self.log_level
+    }
+    pub fn log_facility(&self) -> syslog::Facility {
+        self.log_facility
+    }
+    pub fn act_facility(&self) -> Option<syslog::Facility> {
+        self.act_facility
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct BusConnection {
-    pub name: String,
-    pub account: BusAccount,
-    pub log_level: log::Level,
-    pub log_facility: syslog::Facility,
-    pub act_facility: Option<syslog::Facility>,
+    domain: BusDomain,
+    connection_type: BusConnectionType,
+}
+
+impl BusConnection {
+    pub fn connection_type(&self) -> &BusConnectionType {
+        &self.connection_type
+    }
+
+    pub fn domain(&self) -> &BusDomain {
+        &self.domain
+    }
+
+    pub fn set_domain(&mut self, domain: &BusDomain) {
+        self.domain = domain.clone();
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Config {
-    pub connections: Vec<BusConnection>,
-    pub accounts: Vec<BusAccount>,
-    pub domains: Vec<BusDomain>,
-    pub service_groups: Vec<ServiceGroup>,
-    pub log_protect: Vec<String>,
+    connections: HashMap<String, BusConnectionType>,
+    accounts: HashMap<String, BusAccount>,
+    domains: Vec<BusDomain>,
+    service_groups: HashMap<String, ServiceGroup>,
+    log_protect: Vec<String>,
+    primary_connection: Option<BusConnection>,
 }
 
 impl Config {
 
-    /// Load configuration from a YAML file
+    /// Load configuration from a YAML file.
     ///
-    /// May panic on invalid values (e.g. invalid log level) or invalid
+    /// May panic on invalid values (e.g. invalid log level) or unexpected
     /// Yaml config structures.
     pub fn from_file(filename: &str) -> Result<Self, String> {
-        let op = fs::read_to_string(filename);
-
-        if let Err(e) = op {
-            return Err(format!(
+        match fs::read_to_string(filename) {
+            Ok(text) => Config::from_string(&text),
+            Err(e) => Err(format!(
                 "Error reading configuration file: file='{}' {:?}",
                 filename, e
-            ));
+            ))
         }
-
-        Config::from_string(&op.unwrap())
     }
 
     pub fn from_string(yaml_text: &str) -> Result<Self, String> {
@@ -258,11 +312,12 @@ impl Config {
         let root = &docs[0];
 
         let mut conf = Config {
-            accounts: Vec::new(),
-            connections: Vec::new(),
+            accounts: HashMap::new(),
+            connections: HashMap::new(),
             domains: Vec::new(),
-            service_groups: Vec::new(),
+            service_groups: HashMap::new(),
             log_protect: Vec::new(),
+            primary_connection: None,
         };
 
         conf.apply_service_groups(&root["service-groups"]);
@@ -291,7 +346,6 @@ impl Config {
     }
 
     fn apply_message_bus_config(&mut self, bus_conf: &yaml::Yaml) -> Result<(), String> {
-
         self.apply_accounts(&bus_conf["accounts"])?;
         self.apply_domains(&bus_conf["domains"])?;
         self.apply_connections(&bus_conf["connections"])?;
@@ -312,10 +366,12 @@ impl Config {
             let services =
                 list.iter().map(|s| s.as_str().unwrap().to_string()).collect();
 
-            self.service_groups.push(ServiceGroup {
+            let group = ServiceGroup {
                 name: name.to_string(),
                 services: services
-            });
+            };
+
+            self.service_groups.insert(name, group);
         }
 
         Ok(())
@@ -323,13 +379,13 @@ impl Config {
 
     fn apply_accounts(&mut self, accounts: &yaml::Yaml) -> Result<(), String> {
         for (name, value) in accounts.as_hash().unwrap() {
-            self.accounts.push(
-                BusAccount {
-                    name: self.unpack_yaml_string(&name)?,
-                    username: self.get_yaml_string_at(&value, "username")?,
-                    password: self.get_yaml_string_at(&value, "password")?
-                }
-            );
+            let name = self.unpack_yaml_string(&name)?;
+            let acct = BusAccount {
+                name: name.to_string(),
+                username: self.get_yaml_string_at(&value, "username")?,
+                password: self.get_yaml_string_at(&value, "password")?
+            };
+            self.accounts.insert(name, acct);
         }
 
         Ok(())
@@ -348,13 +404,14 @@ impl Config {
             let name = self.get_yaml_string_at(&domain_conf, "name")?;
 
             let mut domain = BusDomain {
-                domain: name.to_string(),
+                name: name.to_string(),
                 hosted_services: None,
+                port: DEFAULT_BUS_PORT,
             };
 
             // "hosted-services" is optional
             if let Some(name) = domain_conf["hosted-services"].as_str() {
-                match self.service_groups.iter().filter(|g| g.name.eq(name)).next() {
+                match self.service_groups.get(name) {
                     Some(group) => {
                         domain.hosted_services = Some(group.services.clone());
                     }
@@ -384,7 +441,7 @@ impl Config {
             let name = self.unpack_yaml_string(name)?;
             let act_name = self.get_yaml_string_at(&connection, "account")?;
 
-            let acct = match self.accounts.iter().filter(|a| a.name.eq(&act_name)).next() {
+            let acct = match self.accounts.get(&act_name) {
                 Some(a) => a,
                 None => {
                     return Err(format!("No such account: {name}"));
@@ -402,18 +459,60 @@ impl Config {
                 actfac = Some(syslog::Facility::from_str(&af).unwrap());
             }
 
-            let con = BusConnection {
-                name,
+            let con = BusConnectionType {
+                name: name.to_string(),
                 account: acct.clone(),
                 log_level: level,
                 log_facility: facility,
                 act_facility: actfac,
             };
 
-            self.connections.push(con);
+            self.connections.insert(name, con);
         }
 
         Ok(())
+    }
+
+    pub fn set_primary_connection(&mut self,
+        connection_type: &str, domain: &str) -> Result<&BusConnection, String> {
+
+        let con = self.new_bus_connection(connection_type, domain)?;
+        self.primary_connection = Some(con);
+        Ok(self.primary_connection.as_ref().unwrap())
+    }
+
+    pub fn primary_connection(&self) -> Option<&BusConnection> {
+        self.primary_connection.as_ref()
+    }
+
+    pub fn new_bus_connection(&self, contype: &str, domain: &str) -> Result<BusConnection, String> {
+
+        let bus_domain = match self.domains.iter().filter(|d| d.name().eq(domain)).next() {
+            Some(bd) => bd,
+            None => {
+                return Err(format!("No configuration for domain {domain}"));
+            }
+        };
+
+        let con_type = match self.connections.get(contype) {
+            Some(ct) => ct,
+            None => {
+                return Err(format!("No such connection type: {contype}"));
+            }
+        };
+
+        Ok(BusConnection {
+            domain: bus_domain.clone(),
+            connection_type: con_type.clone(),
+        })
+    }
+
+    pub fn multi_domain_support(&self) -> bool {
+        self.domains.len() > 1
+    }
+
+    pub fn get_domain(&self, domain: &str) -> Option<&BusDomain> {
+        self.domains.iter().filter(|d| d.name().eq(domain)).next()
     }
 }
 

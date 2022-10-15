@@ -2,8 +2,7 @@ use chrono::prelude::{DateTime, Local};
 use log::{debug, error, info, trace, warn};
 use opensrf::addr::BusAddress;
 use opensrf::bus::Bus;
-use opensrf::conf::BusConfig;
-use opensrf::conf::ClientConfig;
+use opensrf::conf;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
 use std::thread;
 
@@ -104,9 +103,22 @@ struct RouterDomain {
     route_count: usize,
 
     services: Vec<ServiceEntry>,
+
+    config: conf::BusConnection,
 }
 
 impl RouterDomain {
+
+    fn new(config: &conf::BusConnection) -> Self {
+        RouterDomain {
+            domain: config.domain().name().to_string(),
+            bus: None,
+            route_count: 0,
+            services: Vec::new(),
+            config: config.clone()
+        }
+    }
+
     fn domain(&self) -> &str {
         &self.domain
     }
@@ -160,14 +172,12 @@ impl RouterDomain {
     }
 
     /// Connect to the Redis instance on this domain.
-    fn connect(&mut self, username: &str, password: &str, port: u16) -> Result<(), String> {
+    fn connect(&mut self) -> Result<(), String> {
         if self.bus.is_some() {
             return Ok(());
         }
 
-        let conf = BusConfig::new(self.domain(), port, username, password);
-
-        let bus = match Bus::new(&conf) {
+        let bus = match Bus::new(&self.config) {
             Ok(b) => b,
             Err(e) => return Err(format!("Cannot connect bus: {}", e)),
         };
@@ -205,45 +215,29 @@ struct Router {
 
     remote_domains: Vec<RouterDomain>,
 
-    // Retain the bus connections details at the Router level so they
-    // can be used when connecting to each new domain.
-    bus_username: String,
-    bus_password: String,
-    bus_port: u16,
+    config: conf::Config,
 }
 
 impl Router {
-    pub fn new(domain: &str, username: &str, password: &str, port: u16) -> Self {
-        let addr = BusAddress::new_for_router(domain);
 
-        let d = RouterDomain {
-            domain: domain.to_string(),
-            bus: None,
-            route_count: 0,
-            services: Vec::new(),
-        };
+    pub fn new(config: conf::Config) -> Self {
+        let busconf = config.primary_connection().unwrap();
+        let domain = busconf.domain().name();
+        let addr = BusAddress::new_for_router(domain);
+        let primary_domain = RouterDomain::new(&busconf);
 
         Router {
-            bus_port: port,
-            bus_username: username.to_string(),
-            bus_password: password.to_string(),
-            primary_domain: d,
+            config,
+            primary_domain,
             listen_address: addr,
             remote_domains: Vec::new(),
         }
     }
 
     fn init(&mut self) -> Result<(), String> {
-        self.primary_domain
-            .connect(&self.bus_username, &self.bus_password, self.bus_port)?;
-
+        self.primary_domain.connect()?;
         self.setup_stream()?;
-
         Ok(())
-    }
-
-    fn bus_port(&self) -> u16 {
-        self.bus_port
     }
 
     fn primary_domain(&self) -> &RouterDomain {
@@ -270,7 +264,6 @@ impl Router {
 
     fn to_json_value(&self) -> json::JsonValue {
         json::object! {
-            bus_username: json::from(self.bus_username.as_str()),
             listen_address: json::from(self.listen_address.full()),
             primary_domain: self.primary_domain().to_json_value(),
             remote_domains: json::from(self.remote_domains().iter()
@@ -280,9 +273,9 @@ impl Router {
     }
 
     /// Find or create a new RouterDomain entry.
-    fn find_or_create_domain(&mut self, domain: &str) -> Option<&mut RouterDomain> {
+    fn find_or_create_domain(&mut self, domain: &str) -> Result<&mut RouterDomain, String> {
         if self.primary_domain.domain.eq(domain) {
-            return Some(&mut self.primary_domain);
+            return Ok(&mut self.primary_domain);
         }
 
         let mut pos_op = self.remote_domains.iter().position(|d| d.domain.eq(domain));
@@ -290,17 +283,22 @@ impl Router {
         if pos_op.is_none() {
             debug!("Adding new RouterDomain for domain={}", domain);
 
-            self.remote_domains.push(RouterDomain {
-                domain: domain.to_string(),
-                bus: None,
-                route_count: 0,
-                services: Vec::new(),
-            });
+            // Primary connection is required at this point.
+            let mut busconf = self.config.primary_connection().unwrap().clone();
+
+            if let Some(d) = self.config.get_domain(domain) {
+                busconf.set_domain(d);
+            } else {
+                return Err(format!("Cannot route to unknown domain: {domain}"));
+            }
+
+            self.remote_domains.push(RouterDomain::new(&busconf));
 
             pos_op = Some(self.remote_domains.len() - 1);
         }
 
-        self.remote_domains.get_mut(pos_op.unwrap())
+        // Here the position is known to have data.
+        Ok(self.remote_domains.get_mut(pos_op.unwrap()).unwrap())
     }
 
     fn handle_unregister(&mut self, address: &BusAddress, service: &str) -> Result<(), String> {
@@ -351,15 +349,7 @@ impl Router {
 
         info!("Registering new domain={}", domain);
 
-        let r_domain = match self.find_or_create_domain(domain) {
-            Some(d) => d,
-            None => {
-                return Err(format!(
-                    "Cannot find/create domain entry for domain {}",
-                    domain
-                ));
-            }
-        };
+        let r_domain = self.find_or_create_domain(domain)?;
 
         for svc in &mut r_domain.services {
             // See if we have a ServiceEntry for this service on this domain.
@@ -483,7 +473,7 @@ impl Router {
                 if r_domain.bus.is_none() {
                     // We only connect to remote domains when it's
                     // time to send them a message.
-                    r_domain.connect(&self.bus_username, &self.bus_password, self.bus_port)?;
+                    r_domain.connect()?;
                 }
 
                 r_domain.route_count += 1;
@@ -582,6 +572,8 @@ impl Router {
         }
 
         // Bounce the message back to the caller with the requested data.
+        // Should our FROM address be our unique bus address or the router
+        // address? Does it matter?
         tm.set_from(self.primary_domain.bus().unwrap().address().full());
         tm.set_to(from_addr.full());
 
@@ -594,19 +586,10 @@ impl Router {
             }
         };
 
-        let username = self.bus_username.to_string();
-        let password = self.bus_password.to_string();
-        let port = self.bus_port;
-
-        let r_domain_op = self.find_or_create_domain(domain);
-        if r_domain_op.is_none() {
-            return Err(format!("Could not send reply to domain {domain}"));
-        }
-
-        let r_domain = r_domain_op.unwrap();
+        let r_domain = self.find_or_create_domain(domain)?;
 
         if r_domain.bus.is_none() {
-            r_domain.connect(&username, &password, port)?;
+            r_domain.connect()?;
         }
 
         r_domain.send_to_domain(tm)
@@ -631,24 +614,22 @@ impl Router {
 }
 
 fn main() {
-    let _ = ClientConfig::from_file("conf/opensrf_client.yml").unwrap();
+    let mut config = conf::Config::from_file("conf/opensrf_client.yml").unwrap();
+    let mut config2 = config.clone();
+
+    config.set_primary_connection("router", "private.localhost").unwrap();
+    config2.set_primary_connection("router", "public.localhost").unwrap();
 
     // Run one router thread per hosted domain
     let t1 = thread::spawn(|| {
-        let mut router: Router =
-            Router::new("private.localhost", "opensrf@private", "password", 6379);
-
-        router.init().expect("Router init");
-
+        let mut router: Router = Router::new(config);
+        router.init().unwrap();
         router.listen();
     });
 
     let t2 = thread::spawn(|| {
-        let mut router: Router =
-            Router::new("public.localhost", "opensrf@private", "password", 6379);
-
-        router.init().expect("Router init");
-
+        let mut router: Router = Router::new(config2);
+        router.init().unwrap();
         router.listen();
     });
 

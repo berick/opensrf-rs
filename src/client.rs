@@ -27,7 +27,7 @@ pub struct Client {
     /// Connections to remote domains.
     remote_bus_map: HashMap<String, bus::Bus>,
 
-    config: conf::ClientConfig,
+    config: conf::Config,
 
     /// Queue of receieved transport messages that have yet to be
     /// processed by any sessions.
@@ -39,10 +39,10 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(config: conf::ClientConfig) -> Result<ClientHandle, String> {
-        let domain = config.bus_config().domain().to_string();
-
-        let bus = bus::Bus::new(config.bus_config())?;
+    pub fn new(config: conf::Config) -> Result<ClientHandle, String> {
+        let con = config.primary_connection().unwrap();
+        let bus = bus::Bus::new(&con)?;
+        let domain = con.domain().name().to_string();
 
         let client = Client {
             config,
@@ -94,9 +94,25 @@ impl Client {
         }
     }
 
+    /// Add a connection to a new remote domain.
+    ///
+    /// Panics if our configuration has no primary domain.
     fn add_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, String> {
-        let bus_conf = self.config.bus_config().clone();
-        let bus = bus::Bus::new(&bus_conf)?;
+
+        // When adding a connection to a remote domain, assume the same
+        // connection type, etc. is used and just change the domain.
+        let mut con = self.config.primary_connection().unwrap().clone();
+
+        let bus_domain = match self.config.get_domain(domain) {
+            Some(d) => d,
+            None => {
+                return Err(format!("No configuration for domain: {domain}"));
+            }
+        };
+
+        con.set_domain(bus_domain);
+
+        let bus = bus::Bus::new(&con)?;
 
         info!("Opened connection to new domain: {}", domain);
 
