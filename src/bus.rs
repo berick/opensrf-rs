@@ -82,8 +82,8 @@ impl Bus {
             password: Some(acct.password().to_string()),
         };
 
-        let con_addr = ConnectionAddr::Tcp(
-            config.domain().name().to_string(), config.domain().port());
+        let con_addr =
+            ConnectionAddr::Tcp(config.domain().name().to_string(), config.domain().port());
 
         Ok(ConnectionInfo {
             addr: con_addr,

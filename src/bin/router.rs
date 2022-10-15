@@ -108,14 +108,13 @@ struct RouterDomain {
 }
 
 impl RouterDomain {
-
     fn new(config: &conf::BusConnection) -> Self {
         RouterDomain {
             domain: config.domain().name().to_string(),
             bus: None,
             route_count: 0,
             services: Vec::new(),
-            config: config.clone()
+            config: config.clone(),
         }
     }
 
@@ -219,7 +218,6 @@ struct Router {
 }
 
 impl Router {
-
     pub fn new(config: conf::Config) -> Self {
         let busconf = config.primary_connection().unwrap();
         let domain = busconf.domain().name();
@@ -617,8 +615,12 @@ fn main() {
     let mut config = conf::Config::from_file("conf/opensrf_client.yml").unwrap();
     let mut config2 = config.clone();
 
-    config.set_primary_connection("router", "private.localhost").unwrap();
-    config2.set_primary_connection("router", "public.localhost").unwrap();
+    config
+        .set_primary_connection("router", "private.localhost")
+        .unwrap();
+    config2
+        .set_primary_connection("router", "public.localhost")
+        .unwrap();
 
     // Run one router thread per hosted domain
     let t1 = thread::spawn(|| {

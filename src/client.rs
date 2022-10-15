@@ -40,7 +40,6 @@ pub struct Client {
 
 impl Client {
     pub fn new(config: conf::Config) -> Result<ClientHandle, String> {
-
         let con = match config.primary_connection() {
             Some(c) => c,
             None => {
@@ -105,7 +104,6 @@ impl Client {
     ///
     /// Panics if our configuration has no primary domain.
     fn add_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, String> {
-
         // When adding a connection to a remote domain, assume the same
         // connection type, etc. is used and just change the domain.
         let mut con = self.config.primary_connection().unwrap().clone();

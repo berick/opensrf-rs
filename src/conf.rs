@@ -1,9 +1,9 @@
+use std::collections::HashMap;
 use std::fs;
+use std::str::FromStr;
+use syslog;
 use yaml_rust::yaml;
 use yaml_rust::YamlLoader;
-use syslog;
-use std::str::FromStr;
-use std::collections::HashMap;
 //use std::default::Default;
 
 const DEFAULT_BUS_PORT: u16 = 6379;
@@ -93,7 +93,6 @@ pub struct Config {
 }
 
 impl Config {
-
     /// Load configuration from a YAML file.
     ///
     /// May panic on invalid values (e.g. invalid log level) or unexpected
@@ -104,12 +103,11 @@ impl Config {
             Err(e) => Err(format!(
                 "Error reading configuration file: file='{}' {:?}",
                 filename, e
-            ))
+            )),
         }
     }
 
     pub fn from_string(yaml_text: &str) -> Result<Self, String> {
-
         let op = YamlLoader::load_from_str(yaml_text);
 
         if let Err(e) = op {
@@ -137,15 +135,13 @@ impl Config {
             }
         }
 
-        println!("CONF: {conf:?}");
-
         Ok(conf)
     }
 
     fn unpack_yaml_string(&self, thing: &yaml::Yaml) -> Result<String, String> {
         match thing.as_str() {
             Some(s) => Ok(s.to_string()),
-            None => Err(format!("Cannot coerce into string: {thing:?}"))
+            None => Err(format!("Cannot coerce into string: {thing:?}")),
         }
     }
 
@@ -161,18 +157,21 @@ impl Config {
         Ok(())
     }
 
-    fn apply_service_groups(&mut self, groups: &yaml::Yaml) -> Result<(), String>{
-
+    fn apply_service_groups(&mut self, groups: &yaml::Yaml) -> Result<(), String> {
         let hash = match groups.as_hash() {
             Some(h) => h,
-            None => { return Ok(()); }
+            None => {
+                return Ok(());
+            }
         };
 
         for (name, list) in hash {
             let name = self.unpack_yaml_string(name)?;
             let list = list.as_vec().unwrap();
-            let services =
-                list.iter().map(|s| s.as_str().unwrap().to_string()).collect();
+            let services = list
+                .iter()
+                .map(|s| s.as_str().unwrap().to_string())
+                .collect();
             self.service_groups.insert(name, services);
         }
 
@@ -184,7 +183,7 @@ impl Config {
             let name = self.unpack_yaml_string(&name)?;
             let acct = BusAccount {
                 username: self.get_yaml_string_at(&value, "username")?,
-                password: self.get_yaml_string_at(&value, "password")?
+                password: self.get_yaml_string_at(&value, "password")?,
             };
             self.accounts.insert(name, acct);
         }
@@ -193,7 +192,6 @@ impl Config {
     }
 
     fn apply_domains(&mut self, domains: &yaml::Yaml) -> Result<(), String> {
-
         let domains = match domains.as_vec() {
             Some(d) => d,
             None => {
@@ -229,7 +227,6 @@ impl Config {
     }
 
     fn apply_connections(&mut self, connections: &yaml::Yaml) -> Result<(), String> {
-
         let hash = match connections.as_hash() {
             Some(h) => h,
             None => {
@@ -238,7 +235,6 @@ impl Config {
         };
 
         for (name, connection) in hash {
-
             let name = self.unpack_yaml_string(name)?;
             let act_name = self.get_yaml_string_at(&connection, "account")?;
 
@@ -273,9 +269,11 @@ impl Config {
         Ok(())
     }
 
-    pub fn set_primary_connection(&mut self,
-        connection_type: &str, domain: &str) -> Result<&BusConnection, String> {
-
+    pub fn set_primary_connection(
+        &mut self,
+        connection_type: &str,
+        domain: &str,
+    ) -> Result<&BusConnection, String> {
         let con = self.new_bus_connection(connection_type, domain)?;
         self.primary_connection = Some(con);
         Ok(self.primary_connection.as_ref().unwrap())
@@ -286,7 +284,6 @@ impl Config {
     }
 
     pub fn new_bus_connection(&self, contype: &str, domain: &str) -> Result<BusConnection, String> {
-
         let bus_domain = match self.domains.iter().filter(|d| d.name().eq(domain)).next() {
             Some(bd) => bd,
             None => {
@@ -315,5 +312,3 @@ impl Config {
         self.domains.iter().filter(|d| d.name().eq(domain)).next()
     }
 }
-
-
