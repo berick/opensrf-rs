@@ -118,7 +118,7 @@ struct Session {
 
 impl fmt::Display for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Session({} {})", &self.service, &self.thread)
+        write!(f, "Session({} {})", self.service(), self.thread())
     }
 }
 
@@ -462,11 +462,10 @@ impl SessionHandle {
     where
         T: Into<JsonValue>,
     {
-        Ok(Request {
-            complete: false,
-            session: self.session.clone(),
-            thread_trace: self.session.borrow_mut().request(method, params)?,
-        })
+        Ok(Request::new(
+            self.session.clone(),
+            self.session.borrow_mut().request(method, params)?,
+        ))
     }
 
     /// Send a request and receive a ResponseIterator for iterating

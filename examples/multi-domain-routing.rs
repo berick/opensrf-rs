@@ -1,6 +1,6 @@
 use opensrf::addr::BusAddress;
 use opensrf::Client;
-use opensrf::ClientConfig;
+use opensrf::Config;
 
 const PRIVATE_SERVICE: &str = "opensrf.private";
 const PUBLIC_SERVICE: &str = "opensrf.public";
@@ -20,17 +20,14 @@ const PUBLIC_DOMAIN: &str = "public.localhost";
 
 // TODO pull domains, etc. from the config for proper testing.
 fn main() -> Result<(), String> {
-    let mut conf = ClientConfig::from_file("conf/opensrf_client.yml")?;
-    conf.enable_multi_domain_support();
-
-    // Force the config to use the private domain.
-    conf.bus_config_mut().set_domain(PRIVATE_DOMAIN);
+    let mut conf = Config::from_file("conf/opensrf_client.yml")?;
+    conf.set_primary_connection("service", PRIVATE_DOMAIN);
 
     let conf2 = conf.clone();
 
     // Force our 3rd config to use the public domain
     let mut conf3 = conf.clone();
-    conf3.bus_config_mut().set_domain(PUBLIC_DOMAIN);
+    conf3.set_primary_connection("gateway", PUBLIC_DOMAIN);
 
     // Create a public and private client for x-domain communication
     let mut pvt_client = Client::new(conf)?;

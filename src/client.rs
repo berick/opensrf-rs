@@ -40,7 +40,14 @@ pub struct Client {
 
 impl Client {
     pub fn new(config: conf::Config) -> Result<ClientHandle, String> {
-        let con = config.primary_connection().unwrap();
+
+        let con = match config.primary_connection() {
+            Some(c) => c,
+            None => {
+                return Err(format!("Client Config requires a primary connection"));
+            }
+        };
+
         let bus = bus::Bus::new(&con)?;
         let domain = con.domain().name().to_string();
 

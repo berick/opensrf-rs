@@ -1,5 +1,4 @@
 use opensrf::Client;
-use opensrf::ClientConfig;
 use opensrf::Config;
 
 const SERVICE: &str = "opensrf.settings";
@@ -7,10 +6,8 @@ const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {
 
-    let conf = Config::from_file("conf/opensrf_client.yml")?;
-
-    /*
-    let conf = ClientConfig::from_file("conf/opensrf_client.yml")?;
+    let mut conf = Config::from_file("conf/opensrf_client.yml")?;
+    conf.set_primary_connection("service", "private.localhost")?;
 
     let mut client = Client::new(conf)?;
 
@@ -40,7 +37,6 @@ fn main() -> Result<(), String> {
     for resp in client.sendrecv(SERVICE, METHOD, params)? {
         println!("Response: {}", resp.dump());
     }
-    */
 
     Ok(())
 }
