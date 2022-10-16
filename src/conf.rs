@@ -95,6 +95,11 @@ pub struct Config {
 }
 
 impl Config {
+
+    pub fn domains(&self) -> &Vec<BusDomain> {
+        &self.domains
+    }
+
     /// Load configuration from a YAML file.
     ///
     /// May panic on invalid values (e.g. invalid log level) or unexpected

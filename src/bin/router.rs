@@ -397,7 +397,7 @@ impl Router {
     }
 
     /// List of currently active services by service name.
-    fn active_services(&self) -> Vec<&str> {
+    fn _active_services(&self) -> Vec<&str> {
         let mut services: Vec<&str> = self
             .primary_domain()
             .services()
@@ -612,29 +612,26 @@ impl Router {
 }
 
 fn main() {
-    let mut config = conf::Config::from_file("conf/opensrf_client.yml").unwrap();
-    let mut config2 = config.clone();
+    let config = conf::Config::from_file("conf/opensrf_client.yml").unwrap();
 
-    config
-        .set_primary_connection("router", "private.localhost")
-        .unwrap();
-    config2
-        .set_primary_connection("router", "public.localhost")
-        .unwrap();
+    let mut threads: Vec<thread::JoinHandle<_>> = Vec::new();
 
-    // Run one router thread per hosted domain
-    let t1 = thread::spawn(|| {
-        let mut router: Router = Router::new(config);
-        router.init().unwrap();
-        router.listen();
-    });
+    // Each domain gets a router.
+    for domain in config.domains() {
+        let mut conf = config.clone();
+        conf.set_primary_connection("router", domain.name()).unwrap();
 
-    let t2 = thread::spawn(|| {
-        let mut router: Router = Router::new(config2);
-        router.init().unwrap();
-        router.listen();
-    });
+        threads.push(
+            thread::spawn(|| {
+                let mut router = Router::new(conf);
+                router.init().unwrap();
+                router.listen();
+            })
+        );
+    }
 
-    t1.join().ok();
-    t2.join().ok();
+    // Block here while the routers are running.
+    for thread in threads {
+        thread.join().ok();
+    }
 }
