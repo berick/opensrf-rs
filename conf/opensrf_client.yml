@@ -24,8 +24,8 @@ message-bus:
       hosted-services: public-services
     # port: 6379
 
-  # Accounts used for logging in to the message bus.
-  # Accounts must be consistent across all domains for x-domain routing.
+  # Credentials used for logging in to the message bus.
+  # Credentials must be consistent across all domains for x-domain routing.
   #
   # Account names are free-form and have no meaning outside of this 
   # configuration file.
@@ -33,7 +33,7 @@ message-bus:
   # Account usernames are only used for logging in to Redis, where 
   # read/write permissions are enforced per account.  The usernames
   # have no meaning within the application.
-  accounts:
+  credentials:
     private-account:
       username: opensrf@private
       password: password
@@ -44,25 +44,25 @@ message-bus:
   # Well-known connection types, with option to define custom types
   # for use with local scripts, etc.
   #
-  # These link connection types to their bus accounts and define
+  # These link connection types to their bus credentials and define
   # their logging configs.
   connections:
     service:
-      account: private-account
+      credentials: private-account
       loglevel: info
       syslog-facility: local0
       actlog-facility: local1
     gateway:
-      account: public-account
+      credentials: public-account
       loglevel: info
       syslog-facility: local6
       actlog-facility: local1
     srfsh:
-      account: private-account
+      credentials: private-account
       loglevel: debug
       syslog-facility: local0
     router:
-      account: private-account
+      credentials: private-account
       loglevel: info
       syslog-facility: local2
 

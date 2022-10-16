@@ -75,7 +75,7 @@ impl Bus {
         // Build the connection info by hand because it gives us more
         // flexibility/control than compiling a URL string.
 
-        let acct = config.connection_type().account();
+        let acct = config.connection_type().credentials();
         let redis_con = RedisConnectionInfo {
             db: 0,
             username: Some(acct.username().to_string()),

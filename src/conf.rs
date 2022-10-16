@@ -8,13 +8,14 @@ use yaml_rust::YamlLoader;
 
 const DEFAULT_BUS_PORT: u16 = 6379;
 
+/// A set of bus login credentials
 #[derive(Debug, Clone)]
-pub struct BusAccount {
+pub struct BusCredentials {
     username: String,
     password: String,
 }
 
-impl BusAccount {
+impl BusCredentials {
     pub fn username(&self) -> &str {
         &self.username
     }
@@ -23,6 +24,7 @@ impl BusAccount {
     }
 }
 
+/// A routable bus domain.
 #[derive(Debug, Clone)]
 pub struct BusDomain {
     name: String,
@@ -41,15 +43,15 @@ impl BusDomain {
 
 #[derive(Debug, Clone)]
 pub struct BusConnectionType {
-    account: BusAccount,
+    credentials: BusCredentials,
     log_level: log::Level,
     log_facility: syslog::Facility,
     act_facility: Option<syslog::Facility>,
 }
 
 impl BusConnectionType {
-    pub fn account(&self) -> &BusAccount {
-        &self.account
+    pub fn credentials(&self) -> &BusCredentials {
+        &self.credentials
     }
     pub fn log_level(&self) -> log::Level {
         self.log_level
@@ -85,7 +87,7 @@ impl BusConnection {
 #[derive(Debug, Clone)]
 pub struct Config {
     connections: HashMap<String, BusConnectionType>,
-    accounts: HashMap<String, BusAccount>,
+    credentials: HashMap<String, BusCredentials>,
     domains: Vec<BusDomain>,
     service_groups: HashMap<String, Vec<String>>,
     log_protect: Vec<String>,
@@ -118,7 +120,7 @@ impl Config {
         let root = &docs[0];
 
         let mut conf = Config {
-            accounts: HashMap::new(),
+            credentials: HashMap::new(),
             connections: HashMap::new(),
             domains: Vec::new(),
             service_groups: HashMap::new(),
@@ -141,7 +143,8 @@ impl Config {
     fn unpack_yaml_string(&self, thing: &yaml::Yaml) -> Result<String, String> {
         match thing.as_str() {
             Some(s) => Ok(s.to_string()),
-            None => Err(format!("Cannot coerce into string: {thing:?}")),
+            None => Err(format!(
+                "unpack_yaml_string() cannot coerce into string: {thing:?}")),
         }
     }
 
@@ -150,7 +153,7 @@ impl Config {
     }
 
     fn apply_message_bus_config(&mut self, bus_conf: &yaml::Yaml) -> Result<(), String> {
-        self.apply_accounts(&bus_conf["accounts"])?;
+        self.apply_credentials(&bus_conf["credentials"])?;
         self.apply_domains(&bus_conf["domains"])?;
         self.apply_connections(&bus_conf["connections"])?;
 
@@ -178,14 +181,14 @@ impl Config {
         Ok(())
     }
 
-    fn apply_accounts(&mut self, accounts: &yaml::Yaml) -> Result<(), String> {
-        for (name, value) in accounts.as_hash().unwrap() {
+    fn apply_credentials(&mut self, credentials: &yaml::Yaml) -> Result<(), String> {
+        for (name, value) in credentials.as_hash().unwrap() {
             let name = self.unpack_yaml_string(&name)?;
-            let acct = BusAccount {
+            let acct = BusCredentials {
                 username: self.get_yaml_string_at(&value, "username")?,
                 password: self.get_yaml_string_at(&value, "password")?,
             };
-            self.accounts.insert(name, acct);
+            self.credentials.insert(name, acct);
         }
 
         Ok(())
@@ -236,12 +239,12 @@ impl Config {
 
         for (name, connection) in hash {
             let name = self.unpack_yaml_string(name)?;
-            let act_name = self.get_yaml_string_at(&connection, "account")?;
+            let creds_name = self.get_yaml_string_at(&connection, "credentials")?;
 
-            let acct = match self.accounts.get(&act_name) {
+            let creds = match self.credentials.get(&creds_name) {
                 Some(a) => a,
                 None => {
-                    return Err(format!("No such account: {name}"));
+                    return Err(format!("No such credentials: {name}"));
                 }
             };
 
@@ -257,7 +260,7 @@ impl Config {
             }
 
             let con = BusConnectionType {
-                account: acct.clone(),
+                credentials: creds.clone(),
                 log_level: level,
                 log_facility: facility,
                 act_facility: actfac,
