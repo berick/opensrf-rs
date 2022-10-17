@@ -1,12 +1,21 @@
 use opensrf::Client;
 use opensrf::Config;
+use opensrf::Logger;
 
 const SERVICE: &str = "opensrf.settings";
 const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {
+    // TODO wrap al this up a global init()
     let mut conf = Config::from_file("conf/opensrf_client.yml")?;
-    conf.set_primary_connection("service", "private.localhost")?;
+    let connection = conf.set_primary_connection("service", "private.localhost")?;
+
+    let mut logger = Logger::new();
+    logger.set_loglevel(connection.connection_type().log_level());
+    logger.set_facility(connection.connection_type().log_facility());
+    logger.init().unwrap();
+
+    log::info!("OMG HERE WE GO");
 
     let mut client = Client::new(conf)?;
 

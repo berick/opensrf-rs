@@ -380,9 +380,14 @@ impl Session {
             msg,
         );
 
-        // A CONNECT always comes first, so we always drop it onto our
-        // primary domain and let the router figure it out.
-        self.client_mut().bus_mut().send(&tm)?;
+        if self.multi_domain_support {
+            // CONNECTs go through the router when available.
+            let addr = BusAddress::new_for_router(self.client().domain());
+            self.client_mut().bus_mut().send_to(&tm, addr.full())?;
+        } else {
+            // Service-level API call / non-routed
+            self.client_mut().bus_mut().send(&tm)?;
+        }
 
         self.recv(trace, CONNECT_TIMEOUT)?;
 

@@ -4,6 +4,7 @@ use opensrf::addr::BusAddress;
 use opensrf::bus::Bus;
 use opensrf::conf;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
+use opensrf::Logger;
 use std::thread;
 
 /// A service controller.
@@ -617,17 +618,26 @@ fn main() {
     let mut threads: Vec<thread::JoinHandle<_>> = Vec::new();
 
     // Each domain gets a router.
+    let mut log_setup = false;
     for domain in config.domains() {
         let mut conf = config.clone();
-        conf.set_primary_connection("router", domain.name()).unwrap();
+        let conn = conf
+            .set_primary_connection("router", domain.name())
+            .unwrap();
 
-        threads.push(
-            thread::spawn(|| {
-                let mut router = Router::new(conf);
-                router.init().unwrap();
-                router.listen();
-            })
-        );
+        if !log_setup {
+            log_setup = true;
+            let mut logger = Logger::new();
+            logger.set_loglevel(conn.connection_type().log_level());
+            logger.set_facility(conn.connection_type().log_facility());
+            logger.init().unwrap();
+        }
+
+        threads.push(thread::spawn(|| {
+            let mut router = Router::new(conf);
+            router.init().unwrap();
+            router.listen();
+        }));
     }
 
     // Block here while the routers are running.

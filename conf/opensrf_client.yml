@@ -49,7 +49,7 @@ message-bus:
   connections:
     service:
       credentials: private-account
-      loglevel: info
+      loglevel: trace
       syslog-facility: local0
       actlog-facility: local1
     gateway:
@@ -63,7 +63,7 @@ message-bus:
       syslog-facility: local0
     router:
       credentials: private-account
-      loglevel: info
+      loglevel: trace
       syslog-facility: local2
 
 # Named groups of services.

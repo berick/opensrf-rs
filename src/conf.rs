@@ -44,7 +44,7 @@ impl BusDomain {
 #[derive(Debug, Clone)]
 pub struct BusConnectionType {
     credentials: BusCredentials,
-    log_level: log::Level,
+    log_level: log::LevelFilter,
     log_facility: syslog::Facility,
     act_facility: Option<syslog::Facility>,
 }
@@ -53,7 +53,7 @@ impl BusConnectionType {
     pub fn credentials(&self) -> &BusCredentials {
         &self.credentials
     }
-    pub fn log_level(&self) -> log::Level {
+    pub fn log_level(&self) -> log::LevelFilter {
         self.log_level
     }
     pub fn log_facility(&self) -> syslog::Facility {
@@ -95,7 +95,6 @@ pub struct Config {
 }
 
 impl Config {
-
     pub fn domains(&self) -> &Vec<BusDomain> {
         &self.domains
     }
@@ -149,7 +148,8 @@ impl Config {
         match thing.as_str() {
             Some(s) => Ok(s.to_string()),
             None => Err(format!(
-                "unpack_yaml_string() cannot coerce into string: {thing:?}")),
+                "unpack_yaml_string() cannot coerce into string: {thing:?}"
+            )),
         }
     }
 
@@ -254,7 +254,7 @@ impl Config {
             };
 
             let level = self.get_yaml_string_at(&connection, "loglevel")?;
-            let level = log::Level::from_str(&level).unwrap();
+            let level = log::LevelFilter::from_str(&level).unwrap();
 
             let facility = self.get_yaml_string_at(&connection, "syslog-facility")?;
             let facility = syslog::Facility::from_str(&facility).unwrap();

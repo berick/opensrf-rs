@@ -1,6 +1,7 @@
 use opensrf::addr::BusAddress;
 use opensrf::Client;
 use opensrf::Config;
+use opensrf::Logger;
 
 const PRIVATE_SERVICE: &str = "opensrf.private";
 const PUBLIC_SERVICE: &str = "opensrf.public";
@@ -21,7 +22,12 @@ const PUBLIC_DOMAIN: &str = "public.localhost";
 // TODO pull domains, etc. from the config for proper testing.
 fn main() -> Result<(), String> {
     let mut conf = Config::from_file("conf/opensrf_client.yml")?;
-    conf.set_primary_connection("service", PRIVATE_DOMAIN);
+    let connection = conf.set_primary_connection("service", PRIVATE_DOMAIN)?;
+
+    let mut logger = Logger::new();
+    logger.set_loglevel(connection.connection_type().log_level());
+    logger.set_facility(connection.connection_type().log_facility());
+    logger.init().unwrap();
 
     let conf2 = conf.clone();
 
