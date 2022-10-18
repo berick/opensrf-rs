@@ -10,10 +10,8 @@ fn main() -> Result<(), String> {
     let mut conf = Config::from_file("conf/opensrf_client.yml")?;
     let connection = conf.set_primary_connection("service", "private.localhost")?;
 
-    let mut logger = Logger::new();
-    logger.set_loglevel(connection.connection_type().log_level());
-    logger.set_facility(connection.connection_type().log_facility());
-    logger.init().unwrap();
+    let ctype = connection.connection_type();
+    Logger::new(ctype.log_level(), ctype.log_facility()).init().unwrap();
 
     log::info!("OMG HERE WE GO");
 

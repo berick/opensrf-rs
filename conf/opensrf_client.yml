@@ -1,16 +1,5 @@
 # vim:et:ts=2:sw=2:
 
-message_bus:
-  domain: private.localhost
-  port: 6379
-  username: opensrf@private
-  password: password
-
-logging:
-  log4rs_config: conf/log4rs.yml
-
-# ---- EXPERIMENTAL FORMAT -----
-
 message-bus:
 
   # List all routable domains in our cluster.

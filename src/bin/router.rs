@@ -614,24 +614,17 @@ impl Router {
 
 fn main() {
     let config = conf::Config::from_file("conf/opensrf_client.yml").unwrap();
+    let ctype = config.get_connection_type("router").unwrap();
 
+    // Init our global logger instance so we can use, e.g. info!(...)
+    Logger::new(ctype.log_level(), ctype.log_facility()).init().unwrap();
+
+    // Each domain gets a router running in its own thread.
     let mut threads: Vec<thread::JoinHandle<_>> = Vec::new();
 
-    // Each domain gets a router.
-    let mut log_setup = false;
     for domain in config.domains() {
         let mut conf = config.clone();
-        let conn = conf
-            .set_primary_connection("router", domain.name())
-            .unwrap();
-
-        if !log_setup {
-            log_setup = true;
-            let mut logger = Logger::new();
-            logger.set_loglevel(conn.connection_type().log_level());
-            logger.set_facility(conn.connection_type().log_facility());
-            logger.init().unwrap();
-        }
+        conf.set_primary_connection("router", domain.name()).unwrap();
 
         threads.push(thread::spawn(|| {
             let mut router = Router::new(conf);

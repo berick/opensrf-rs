@@ -1,30 +1,28 @@
 ///! OpenSRF Syslog
 use log;
-use std::io::BufWriter;
 use std::os::unix::net::UnixDatagram;
 use std::process;
 use syslog;
 
 const SYSLOG_UNIX_PATH: &str = "/dev/log";
 
-/// Logger structure
+/// Main logging structure
 ///
 /// NOTE this logs directly to the syslog UNIX path instead of going through
-/// the syslog crate.  This approach makes it simpler to control the
-/// formatting and other behavior.
+/// the syslog crate.  This approach gives us much more control.
 pub struct Logger {
     loglevel: log::LevelFilter,
     facility: syslog::Facility,
-    threads: bool,
     writer: Option<UnixDatagram>,
+    _threads: bool,
 }
 
 impl Logger {
-    pub fn new() -> Self {
+    pub fn new(loglevel: log::LevelFilter, facility: syslog::Facility) -> Self {
         Logger {
-            loglevel: log::LevelFilter::Info,
-            facility: syslog::Facility::LOG_LOCAL0,
-            threads: false,
+            loglevel,
+            facility,
+            _threads: false,
             writer: None,
         }
     }
@@ -113,5 +111,5 @@ impl log::Log for Logger {
         println!("{message}");
     }
 
-    fn flush(&self) {} // TODO can syslog do this?
+    fn flush(&self) {}
 }

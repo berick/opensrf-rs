@@ -319,4 +319,8 @@ impl Config {
     pub fn get_domain(&self, domain: &str) -> Option<&BusDomain> {
         self.domains.iter().filter(|d| d.name().eq(domain)).next()
     }
+
+    pub fn get_connection_type(&self, contype: &str) -> Option<&BusConnectionType> {
+        self.connections.get(contype)
+    }
 }
