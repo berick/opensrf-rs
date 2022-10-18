@@ -4,16 +4,14 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-rand = "0.8.4"
-chrono = "0.4.19"
+rand = "0.8.5"
+chrono = "0.4.22"
 yaml-rust = "0.4.5"
-log = "0.4.14"
+log = "0.4.17"
 syslog = "6.0.1"
-log4rs = "1.1.1"
 json = "0.12.4"
 roxmltree = "0.14.1"
-redis = { version = "0.21.4", features = ["streams"] }
-tungstenite = "0.16.0"
+redis = { version = "0.21.6", features = ["streams"] }
 gethostname = "0.2.3"
 
 [[bin]]
