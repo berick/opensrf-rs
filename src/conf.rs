@@ -85,30 +85,30 @@ impl BusConnection {
 }
 
 #[derive(Debug, Clone)]
-pub enum ServiceLanguage {
+pub enum ServiceLang {
     Perl,
     C,
     Rust,
 }
 
-impl From<&str> for ServiceLanguage {
-    fn from(s: &str) -> Self {
+impl From<&str> for ServiceLang {
+    fn from(s: &str) -> ServiceLang {
         let lang = s.to_lowercase();
         match lang.as_str() {
-            "perl" => Self::Perl,
-            "c" => Self::C,
-            "rust" => Self::Rust,
+            "perl" => ServiceLang::Perl,
+            "c" => ServiceLang::C,
+            "rust" => ServiceLang::Rust,
             _ => panic!("Invalid service launguage: {}", lang),
         }
     }
 }
 
-impl Into<&'static str> for ServiceLanguage {
-    fn into(self) -> &'static str {
-        match self {
-            ServiceLanguage::Perl => "perl",
-            ServiceLanguage::C => "c",
-            ServiceLanguage::Rust => "rust",
+impl From<&ServiceLang> for &'static str {
+    fn from(sl: &ServiceLang) -> &'static str {
+        match *sl {
+            ServiceLang::Perl => "perl",
+            ServiceLang::C => "c",
+            ServiceLang::Rust => "rust",
         }
     }
 }
@@ -116,7 +116,7 @@ impl Into<&'static str> for ServiceLanguage {
 #[derive(Debug, Clone)]
 pub struct Service {
     name: String,
-    lang: ServiceLanguage,
+    lang: ServiceLang,
     keepalive: u32,
     min_workers: u32,
     max_workers: u32,
@@ -129,7 +129,7 @@ impl Service {
     pub fn name(&self) -> &str {
         &self.name
     }
-    pub fn lang(&self) -> &ServiceLanguage {
+    pub fn lang(&self) -> &ServiceLang {
         &self.lang
     }
     pub fn keepalive(&self) -> u32 {

@@ -13,6 +13,7 @@ json = "0.12.4"
 roxmltree = "0.14.1"
 redis = { version = "0.21.6", features = ["streams"] }
 gethostname = "0.2.3"
+threadpool = "1.8.1"
 
 [[bin]]
 name = "router"
