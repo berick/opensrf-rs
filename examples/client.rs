@@ -7,7 +7,8 @@ const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {
     // TODO wrap al this up a global init()
-    let mut conf = Config::from_file("conf/opensrf_client.yml")?;
+    let mut conf = Config::from_file("conf/opensrf.yml")?;
+
     let connection = conf.set_primary_connection("service", "private.localhost")?;
 
     let ctype = connection.connection_type();

@@ -20,7 +20,7 @@ const PUBLIC_DOMAIN: &str = "public.localhost";
  */
 
 fn main() -> Result<(), String> {
-    let mut conf = Config::from_file("conf/opensrf_client.yml")?;
+    let mut conf = Config::from_file("conf/opensrf.yml")?;
     let connection = conf.set_primary_connection("service", PRIVATE_DOMAIN)?;
 
     let ctype = connection.connection_type();

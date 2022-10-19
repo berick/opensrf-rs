@@ -613,7 +613,7 @@ impl Router {
 }
 
 fn main() {
-    let config = conf::Config::from_file("conf/opensrf_client.yml").unwrap();
+    let config = conf::Config::from_file("conf/opensrf.yml").unwrap();
     let ctype = config.get_connection_type("router").unwrap();
 
     // Init our global logger instance so we can use, e.g. info!(...)

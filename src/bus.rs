@@ -55,13 +55,13 @@ impl Bus {
             None => self.address().full().to_string(),
         };
 
-        debug!("{} setting up stream={} group={}", self, sname, sname);
+        debug!("{} setting up stream={}", self, sname);
 
         let created: Result<(), _> = self
             .connection()
             .xgroup_create_mkstream(&sname, &sname, "$");
 
-        if let Err(_e) = created {
+        if let Err(_) = created {
             // TODO see about differentiating error types so we can
             // report real errors.
             debug!("{} stream group {} already exists", self, sname);

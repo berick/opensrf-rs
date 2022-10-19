@@ -5,8 +5,9 @@ message-bus:
   # List all routable domains in our cluster.
   # We assume one OpenSRF Router is running on each of domain.
   #
-  # If a Domain has a "hosted-services" entry, only services in the list
-  # should register with the router at the domain.
+  # If a Domain has a "hosted-services" entry, those are the only services
+  # that will launch themselves on the domain.  By default, all services
+  # run on each domain.
   domains:
     - name: private.localhost
     - name: public.localhost
@@ -59,28 +60,29 @@ message-bus:
 # Names are free-form and have no meaning outside of this configuration file.
 service-groups:
   public-services:
-    - opensrf.math
-    - open-ils.actor
-    - open-ils.acq
-    - open-ils.auth
-    - open-ils.auth_proxy
-    - open-ils.booking
-    - open-ils.cat
-    - open-ils.circ
-    - open-ils.collections
-    - open-ils.courses
-    - open-ils.curbside
-    - open-ils.ebook_api
-    - open-ils.fielder
-    - open-ils.pcrud
-    - open-ils.permacrud
-    - open-ils.reporter
-    - open-ils.resolver
-    - open-ils.search
-    - open-ils.serial
-    - open-ils.supercat
-    - open-ils.url_verify
-    - open-ils.vandelay
+    - opensrf.public
+#    - opensrf.math
+#    - open-ils.actor
+#    - open-ils.acq
+#    - open-ils.auth
+#    - open-ils.auth_proxy
+#    - open-ils.booking
+#    - open-ils.cat
+#    - open-ils.circ
+#    - open-ils.collections
+#    - open-ils.courses
+#    - open-ils.curbside
+#    - open-ils.ebook_api
+#    - open-ils.fielder
+#    - open-ils.pcrud
+#    - open-ils.permacrud
+#    - open-ils.reporter
+#    - open-ils.resolver
+#    - open-ils.search
+#    - open-ils.serial
+#    - open-ils.supercat
+#    - open-ils.url_verify
+#    - open-ils.vandelay
 
 # Avoid logging parameters for API calls (at or below INFO level) whose
 # API name is a left-anchored match to any of the following method names.
@@ -100,3 +102,23 @@ log-protect:
   - open-ils.search.z3950.apply_credentials
   - open-ils.geo
   - open-ils.actor.geo
+
+services:
+  opensrf.private:
+    lang: rust
+    keepalive: 5
+    workers:
+      min: 1
+      max: 20
+      min-idle: 1
+      max-idle: 5
+      max-requests: 1000
+  opensrf.public:
+    lang: rust
+    keepalive: 5
+    workers:
+      min: 1
+      max: 20
+      min-idle: 1
+      max-idle: 5
+      max-requests: 1000

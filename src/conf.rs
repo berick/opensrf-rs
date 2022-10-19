@@ -85,6 +85,74 @@ impl BusConnection {
 }
 
 #[derive(Debug, Clone)]
+pub enum ServiceLanguage {
+    Perl,
+    C,
+    Rust,
+}
+
+impl From<&str> for ServiceLanguage {
+    fn from(s: &str) -> Self {
+        let lang = s.to_lowercase();
+        match lang.as_str() {
+            "perl" => Self::Perl,
+            "c" => Self::C,
+            "rust" => Self::Rust,
+            _ => panic!("Invalid service launguage: {}", lang),
+        }
+    }
+}
+
+impl Into<&'static str> for ServiceLanguage {
+    fn into(self) -> &'static str {
+        match self {
+            ServiceLanguage::Perl => "perl",
+            ServiceLanguage::C => "c",
+            ServiceLanguage::Rust => "rust",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Service {
+    name: String,
+    lang: ServiceLanguage,
+    keepalive: u32,
+    min_workers: u32,
+    max_workers: u32,
+    min_idle_workers: u32,
+    max_idle_workers: u32,
+    max_requests: u32,
+}
+
+impl Service {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn lang(&self) -> &ServiceLanguage {
+        &self.lang
+    }
+    pub fn keepalive(&self) -> u32 {
+        self.keepalive
+    }
+    pub fn min_workers(&self) -> u32 {
+        self.min_workers
+    }
+    pub fn max_workers(&self) -> u32 {
+        self.max_workers
+    }
+    pub fn min_idle_workers(&self) -> u32 {
+        self.min_idle_workers
+    }
+    pub fn max_idle_workers(&self) -> u32 {
+        self.max_idle_workers
+    }
+    pub fn max_requests(&self) -> u32 {
+        self.max_requests
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Config {
     connections: HashMap<String, BusConnectionType>,
     credentials: HashMap<String, BusCredentials>,
@@ -92,9 +160,17 @@ pub struct Config {
     service_groups: HashMap<String, Vec<String>>,
     log_protect: Vec<String>,
     primary_connection: Option<BusConnection>,
+    services: Vec<Service>,
+    source: Option<yaml::Yaml>,
 }
 
 impl Config {
+
+    /// Ref to the YAML structure whence we extracted our config values.
+    pub fn source(&self) -> Option<&yaml::Yaml> {
+        self.source.as_ref()
+    }
+
     pub fn domains(&self) -> &Vec<BusDomain> {
         &self.domains
     }
@@ -126,20 +202,25 @@ impl Config {
         let mut conf = Config {
             credentials: HashMap::new(),
             connections: HashMap::new(),
+            services: Vec::new(),
             domains: Vec::new(),
             service_groups: HashMap::new(),
             log_protect: Vec::new(),
             primary_connection: None,
+            source: None,
         };
 
         conf.apply_service_groups(&root["service-groups"])?;
         conf.apply_message_bus_config(&root["message-bus"])?;
+        conf.apply_services(&root["services"])?;
 
         if let Some(arr) = root["log-protect"].as_vec() {
             for lp in arr {
                 conf.log_protect.push(conf.unpack_yaml_string(lp)?);
             }
         }
+
+        conf.source = Some(root.to_owned());
 
         Ok(conf)
     }
@@ -149,6 +230,15 @@ impl Config {
             Some(s) => Ok(s.to_string()),
             None => Err(format!(
                 "unpack_yaml_string() cannot coerce into string: {thing:?}"
+            )),
+        }
+    }
+
+    fn get_yaml_number_at(&self, thing: &yaml::Yaml, key: &str) -> Result<i64, String> {
+        match thing[key].as_i64() {
+            Some(s) => Ok(s),
+            None => Err(format!(
+                "get_yaml_number_at cannot coerce into i64: {thing:?}"
             )),
         }
     }
@@ -277,6 +367,36 @@ impl Config {
         Ok(())
     }
 
+
+    fn apply_services(&mut self, services: &yaml::Yaml) -> Result<(), String> {
+
+        let svc_hash = match services.as_hash() {
+            Some(l) => l,
+            None => {
+                // Services list is not required
+                return Ok(())
+            }
+        };
+
+        for (name, settings) in svc_hash {
+            let workers = &settings["workers"];
+            self.services.push(
+                Service {
+                    name: self.unpack_yaml_string(name)?,
+                    lang: self.get_yaml_string_at(settings, "lang")?.as_str().into(),
+                    keepalive: self.get_yaml_number_at(settings, "keepalive")? as u32,
+                    min_workers: self.get_yaml_number_at(workers, "min")? as u32,
+                    max_workers: self.get_yaml_number_at(workers, "max")? as u32,
+                    min_idle_workers: self.get_yaml_number_at(workers, "min-idle")? as u32,
+                    max_idle_workers: self.get_yaml_number_at(workers, "max-idle")? as u32,
+                    max_requests: self.get_yaml_number_at(workers, "max-requests")? as u32,
+                }
+            );
+        }
+
+        Ok(())
+    }
+
     pub fn set_primary_connection(
         &mut self,
         connection_type: &str,
@@ -322,5 +442,9 @@ impl Config {
 
     pub fn get_connection_type(&self, contype: &str) -> Option<&BusConnectionType> {
         self.connections.get(contype)
+    }
+
+    pub fn services(&self) -> &Vec<Service> {
+        &self.services
     }
 }
