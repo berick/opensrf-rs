@@ -4,7 +4,7 @@ use regex::Regex;
 //type MethodHandler = fn(&mut RequestContext) -> Result<(), super::Error>;
 type MethodHandler = fn() -> Result<(), String>;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum ParamCount {
     Any,
     Zero,
@@ -37,6 +37,7 @@ impl fmt::Display for ParamCount {
     }
 }
 
+#[derive(Debug)]
 pub struct Method {
     /// Regex for matching to incoming API call names
     api_regex: Regex,
@@ -76,9 +77,8 @@ impl Method {
     /// this method.
     ///
     /// ```
-    /// fn foo() -> Result<(), String> {
-    ///   Ok(())
-    /// }
+    /// fn foo() -> Result<(), String> { Ok(()) }
+    ///
     /// let m = opensrf::Method::new(
     ///     "opensrf.private.auto", opensrf::ParamCount::Exactly(1), foo).unwrap();
     ///

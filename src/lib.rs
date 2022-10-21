@@ -5,6 +5,7 @@ pub use logging::Logger;
 pub use session::SessionHandle;
 pub use method::Method;
 pub use method::ParamCount;
+pub use server::Server;
 
 pub mod util;
 pub mod addr;
@@ -16,6 +17,8 @@ pub mod message;
 pub mod session;
 pub mod method;
 pub mod client;
+pub mod server;
+pub mod worker;
 
 #[cfg(test)]
 mod tests;
