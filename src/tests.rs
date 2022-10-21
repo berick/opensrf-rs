@@ -1,11 +1,8 @@
+use json;
 use super::message::Message;
 use super::message::MessageType;
 use super::message::Payload;
 use super::message::TransportMessage;
-use json;
-//use super::conf::Config;
-use super::bus::Bus;
-use super::conf::BusConfig;
 
 const TRANSPORT_MSG_JSON: &str = r#"{
     "to":"my-to",

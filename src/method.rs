@@ -1,4 +1,5 @@
 use std::fmt;
+use regex::Regex;
 // TODO
 //type MethodHandler = fn(&mut RequestContext) -> Result<(), super::Error>;
 type MethodHandler = fn() -> Result<(), String>;
@@ -38,14 +39,29 @@ impl fmt::Display for ParamCount {
 
 pub struct Method {
     /// Regex for matching to incoming API call names
-    api_spec: &'static str,
+    api_regex: Regex,
     param_count: ParamCount,
     handler: MethodHandler
 }
 
 impl Method {
-    pub fn api_spec(&self) -> &str {
-        &self.api_spec
+
+    pub fn new(api_spec: &str,
+        param_count: ParamCount, handler: MethodHandler) -> Result<Self, String> {
+
+        let re = match Regex::new(api_spec) {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(format!(
+                    "Invalid API name api_name: {} => {}", e, api_spec));
+            }
+        };
+
+        Ok(Method {
+            api_regex: re,
+            param_count,
+            handler,
+        })
     }
 
     pub fn param_count(&self) -> &ParamCount {
@@ -54,6 +70,30 @@ impl Method {
 
     pub fn handler(&self) -> MethodHandler {
         self.handler
+    }
+
+    /// Returns true if the provided API name matches the api_regex for
+    /// this method.
+    ///
+    /// ```
+    /// fn foo() -> Result<(), String> {
+    ///   Ok(())
+    /// }
+    /// let m = opensrf::Method::new(
+    ///     "opensrf.private.auto", opensrf::ParamCount::Exactly(1), foo).unwrap();
+    ///
+    /// assert!(m.api_name_matches("opensrf.private.auto.kazoo"));
+    ///
+    /// assert_eq!(m.api_name_matches("opensrf.private.kazoo"), false);
+    /// ```
+
+    pub fn api_name_matches(&self, api_name: &str) -> bool {
+        if self.api_regex.is_match(api_name) {
+            log::debug!("Found a method match for {api_name}");
+            return true;
+        }
+
+        return false;
     }
 }
 

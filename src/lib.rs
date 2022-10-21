@@ -3,6 +3,8 @@ pub use client::ClientHandle;
 pub use conf::Config;
 pub use logging::Logger;
 pub use session::SessionHandle;
+pub use method::Method;
+pub use method::ParamCount;
 
 pub mod util;
 pub mod addr;
