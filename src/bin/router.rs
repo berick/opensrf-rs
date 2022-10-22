@@ -620,7 +620,7 @@ fn main() {
     Logger::new(ctype.log_level(), ctype.log_facility()).init().unwrap();
 
     // Each domain gets a router running in its own thread.
-    let mut threads: Vec<thread::JoinHandle<_>> = Vec::new();
+    let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
     for domain in config.domains() {
         let mut conf = config.clone();

@@ -5,7 +5,7 @@ use super::*;
 use json::JsonValue;
 use log::{info, trace};
 use std::cell::RefCell;
-use std::cell::RefMut;
+use std::cell::{Ref, RefMut};
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
@@ -27,7 +27,7 @@ pub struct Client {
     /// Connections to remote domains.
     remote_bus_map: HashMap<String, bus::Bus>,
 
-    config: conf::Config,
+    config: Arc<conf::Config>,
 
     /// Queue of receieved transport messages that have yet to be
     /// processed by any sessions.
@@ -39,7 +39,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(config: conf::Config) -> Result<ClientHandle, String> {
+    pub fn new(config: Arc<conf::Config>) -> Result<ClientHandle, String> {
         let con = match config.primary_connection() {
             Some(c) => c,
             None => {
@@ -264,6 +264,10 @@ impl ClientHandle {
 
     pub fn client_mut(&self) -> RefMut<Client> {
         self.client.borrow_mut()
+    }
+
+    pub fn client(&self) -> Ref<Client> {
+        self.client.borrow()
     }
 
     pub fn set_serializer(&self, serializer: Arc<dyn DataSerializer>) {

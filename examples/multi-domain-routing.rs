@@ -33,9 +33,9 @@ fn main() -> Result<(), String> {
     conf3.set_primary_connection("gateway", PUBLIC_DOMAIN);
 
     // Create a public and private client for x-domain communication
-    let mut pvt_client = Client::new(conf)?;
-    let mut pvt_client2 = Client::new(conf2)?;
-    let mut pub_client = Client::new(conf3)?;
+    let mut pvt_client = Client::new(conf.to_shared())?;
+    let mut pvt_client2 = Client::new(conf2.to_shared())?;
+    let mut pub_client = Client::new(conf3.to_shared())?;
 
     /*
     let pvt_addr = BusAddress::new_for_service(PRIVATE_SERVICE);

@@ -16,7 +16,7 @@ fn main() -> Result<(), String> {
 
     log::info!("OMG HERE WE GO");
 
-    let mut client = Client::new(conf)?;
+    let mut client = Client::new(conf.to_shared())?;
 
     let mut ses = client.session(SERVICE);
     let mut ses2 = client.session(SERVICE);

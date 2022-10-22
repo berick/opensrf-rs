@@ -4,7 +4,7 @@ use std::str::FromStr;
 use syslog;
 use yaml_rust::yaml;
 use yaml_rust::YamlLoader;
-//use std::default::Default;
+use std::sync::Arc;
 
 const DEFAULT_BUS_PORT: u16 = 6379;
 
@@ -165,6 +165,10 @@ pub struct Config {
 }
 
 impl Config {
+
+    pub fn to_shared(self) -> Arc<Config> {
+        Arc::new(self)
+    }
 
     /// Ref to the YAML structure whence we extracted our config values.
     pub fn source(&self) -> Option<&yaml::Yaml> {
@@ -446,5 +450,9 @@ impl Config {
 
     pub fn services(&self) -> &Vec<Service> {
         &self.services
+    }
+
+    pub fn get_service_config(&self, name: &str) -> Option<&Service> {
+        self.services().iter().filter(|s| s.name().eq(name)).next()
     }
 }
