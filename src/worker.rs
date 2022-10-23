@@ -34,6 +34,9 @@ pub struct Worker {
     // Keep a local copy for convenience
     service_conf: conf::Service,
 
+    // Thread for our in-progress conversation.
+    cur_thread: Option<String>,
+
     worker_id: u64,
 
     // Channel for sending worker state info to our parent.
@@ -72,6 +75,7 @@ impl Worker {
             methods,
             client,
             to_parent_tx,
+            cur_thread: None,
             connected: false,
             marked_active: false,
             service_conf: sconf,
@@ -126,12 +130,8 @@ impl Worker {
 
             } else {
 
-                // Each time we start listening for top-level requests,
-                // be sure our personal message bus is cleared to avoid
-                // processing any messages leftover from a previous
-                // conversation.
-                if let Err(e) = self.client().clear() {
-                    log::error!("{selfstr} could not clear message bus {}", e);
+                if let Err(e) = self.reset() {
+                    log::error!("{selfstr} could not reset {e}.  Exiting");
                     break;
                 }
 
@@ -152,7 +152,7 @@ impl Worker {
                     // If an error occurs here, we can get stuck in a tight
                     // loop that's hard to break.  Add a sleep so we can
                     // more easily control-c out of the loop.
-                    thread::sleep(time::Duration::from_millis(1000));
+                    thread::sleep(time::Duration::from_secs(1));
                     self.connected = false;
                 },
 
@@ -210,26 +210,50 @@ impl Worker {
     fn handle_transport_message(&mut self, tmsg: &message::TransportMessage) -> Result<(), String> {
         let sender = BusAddress::new_from_string(tmsg.from())?;
         for msg in tmsg.body().iter() {
-            self.handle_message(&sender, &msg)?;
+            self.handle_message(tmsg.thread(), &sender, &msg)?;
         }
         Ok(())
     }
 
-    fn handle_message(&mut self, sender: &BusAddress, msg: &message::Message) -> Result<(), String> {
+    // Clear our local message bus and reset state maintenance values.
+    fn reset(&mut self) -> Result<(), String> {
+        self.connected = false;
+        self.cur_thread = None;
+        self.client().clear()
+    }
+
+    fn handle_message(&mut self, thread: &str, sender: &BusAddress, msg: &message::Message) -> Result<(), String> {
         match msg.mtype() {
             message::MessageType::Disconnect => {
-                self.connected = false;
                 log::trace!("{self} received a DISCONNECT");
+                self.reset()?;
                 Ok(())
             }
             message::MessageType::Connect => {
                 log::trace!("{self} received a CONNECT");
+
+                if self.connected {
+                    return self.reply_bad_request(sender, msg, "Worker is already connected");
+                }
+
                 self.connected = true;
+                self.cur_thread = Some(thread.to_string());
+
                 // TODO send connect-ok message
                 Ok(())
             }
             message::MessageType::Request => {
                 log::trace!("{self} received a REQUEST");
+
+                if self.connected {
+                    let ct = self.cur_thread.as_ref().unwrap(); // Set at Connect
+                    if ct.ne(thread) {
+                        return self.reply_bad_request(sender, msg,
+                            "Request thread does not match in-progress thread");
+                    }
+                } else {
+                    self.cur_thread = Some(thread.to_string());
+                }
                 self.handle_request(sender, msg)
             }
             _ => {
@@ -240,7 +264,7 @@ impl Worker {
 
     fn handle_request(&mut self, sender: &BusAddress, msg: &message::Message) -> Result<(), String> {
 
-        let method = match msg.payload() {
+        let request = match msg.payload() {
             message::Payload::Method(m) => m,
             _ => {
                 return self.reply_bad_request(
@@ -258,19 +282,56 @@ impl Worker {
             self.marked_active = true;
         }
 
+        // Log the API call
+        log::debug!("CALL: {} {}", request.method(),
+            request.params().iter().map(|p| p.dump()).collect::<Vec<_>>().join(", "));
+
         // Before we begin processing a service-level request, clear our
-        // personal message bus to avoid encountering any stale messages
+        // local message bus to avoid encountering any stale messages
         // lingering from the previous conversation.
         if !self.connected {
             self.client().clear()?;
         }
 
-        // Vec<json::JsonValue> => "jsonString1,jsonString2,..."
-        log::debug!("CALL: {} {}", method.method(),
-            method.params().iter().map(|p| p.dump()).collect::<Vec<_>>().join(", "));
-
         Ok(())
     }
+
+    fn find_method(&mut self, api_name: &str) -> Option<&'static Method> {
+
+        if let Some(m) = self.known_methods.get(api_name) {
+            log::trace!("{self} found known good method for {api_name}");
+            return Some(*m);
+        }
+
+
+        // Look for a registered method whose API name matches the
+        // regex api spec for the requested method.
+        /*
+        for m in self.methods.iter() {
+
+            // Each registered method has an api name that may contain
+            // regex bits.  See if the requeste method matches the
+            // registered method.
+            let re = match Regex::new(m.api_name) {
+                Ok(r) => r,
+                Err(e) => {
+                    error!("Invalid API name spec: {} => {}", e, m.api_name);
+                    continue;
+                }
+            };
+
+            // Does this method match the requested method?
+            if re.is_match(api_name) {
+                trace!("Found a method name match on {} = {}", api_name, m.api_name);
+                self.known_methods.insert(api_name.to_string(), &m);
+                return Some(&m);
+            }
+        }
+        */
+
+        None
+    }
+
 
     fn reply_bad_request(&mut self, sender: &BusAddress,
         msg: &message::Message, text: &str) -> Result<(), String> {
