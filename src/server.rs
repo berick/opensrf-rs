@@ -104,13 +104,9 @@ impl Server {
     fn spawn_threads(&mut self) {
 
         let min_workers = self.service_conf().min_workers() as usize;
+        let mut worker_count = self.workers.len();
 
-        loop {
-
-            if self.workers.len() >= min_workers {
-                break;
-            }
-
+        while worker_count < min_workers {
             let worker_id = self.next_worker_id();
             let methods = self.methods;
             let confref = self.config.clone();
@@ -118,15 +114,42 @@ impl Server {
             let service = self.service.to_string();
 
             let handle = thread::spawn(move || {
-                log::debug!("Worker {worker_id} going into listen()");
-                Worker::new(service, worker_id, confref, methods, to_parent_tx).listen();
+                Server::start_worker_thread(
+                    service, worker_id, confref, methods, to_parent_tx);
             });
 
             self.workers.insert(worker_id, WorkerThread {
                 state: WorkerState::Idle,
                 join_handle: handle
             });
+
+            worker_count = self.workers.len();
         }
+    }
+
+    fn start_worker_thread(
+        service: String,
+        worker_id: u64,
+        config: Arc<Config>,
+        methods: &'static [Method],
+        to_parent_tx: mpsc::SyncSender<WorkerStateEvent>) {
+
+        log::trace!("Creating new worker {worker_id}");
+
+        match Worker::new(service, worker_id, config, methods, to_parent_tx) {
+            Ok(mut worker) => {
+                log::trace!("Worker {worker_id} going into listen()");
+                worker.listen();
+            }
+            Err(e) => {
+                log::error!("Cannot create worker: {e}. Exiting.");
+
+                // If a worker dies during creation, likely they all
+                // will.  Add a sleep here to avoid a storm of new
+                // worker threads spinning up and failing.
+                thread::sleep(Duration::from_secs(5));
+            }
+        };
     }
 
     pub fn listen(&mut self) {

@@ -15,7 +15,7 @@ use std::cell::{Ref, RefMut};
 pub struct Worker {
     service: String,
 
-    client: Option<ClientHandle>,
+    client: ClientHandle,
 
     // True if the caller has requested a stateful conversation.
     connected: bool,
@@ -30,6 +30,9 @@ pub struct Worker {
     known_methods: HashMap<String, &'static Method>,
 
     config: Arc<Config>,
+
+    // Keep a local copy for convenience
+    service_conf: conf::Service,
 
     worker_id: u64,
 
@@ -51,47 +54,62 @@ impl Worker {
         config: Arc<Config>,
         methods: &'static [Method],
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>
-    ) -> Worker {
+    ) -> Result<Worker, String> {
 
-        Worker {
+        let sconf = match config.services().iter().filter(|s| s.name().eq(&service)).next() {
+            Some(sc) => sc.clone(),
+            None => {
+                return Err(format!("No configuration for service {service}"));
+            }
+        };
+
+        let client = Client::new(config.clone())?;
+
+        Ok(Worker {
             service,
             worker_id,
             config,
             methods,
+            client,
             to_parent_tx,
-            client: None,
             connected: false,
             marked_active: false,
+            service_conf: sconf,
             known_methods: HashMap::new(),
-        }
+        })
     }
 
     // Configuration for the service we are hosting.
     //
     // Assumes we have a config for our service and panics if none is found.
     fn service_conf(&self) -> &conf::Service {
-        self.config.services().iter().filter(|s| s.name().eq(&self.service)).next().unwrap()
+        &self.service_conf
     }
 
     pub fn worker_id(&self) -> u64 {
         self.worker_id
     }
 
-    // Panics if we don't have a client.
+    /// Shortcut for mutable client ref.
     fn client(&mut self) -> RefMut<Client> {
-        self.client.as_mut().unwrap().client_mut()
+        self.client.client_mut()
     }
 
     pub fn listen(&mut self) {
         let selfstr = format!("{self}");
 
-        // TODO connect client...
-        // TODO setup listen stream for service
         let mut requests: u32 = 0;
         let max_reqs = self.service_conf().max_requests();
         let service_addr = BusAddress::new_for_service(&self.service).full().to_string();
         let local_addr = self.client().address().to_string();
         let keepalive = self.service_conf().keepalive() as i32;
+
+        // Setup the stream for our service.  This is the top-level
+        // service address where new requests arrive.
+        if let Err(e) = self.client().bus_mut().setup_stream(Some(&service_addr)) {
+            log::error!("{selfstr} cannot setup service stream at {service_addr}: {e}");
+            return;
+        }
 
         while requests < max_reqs {
 
