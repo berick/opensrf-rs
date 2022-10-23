@@ -171,7 +171,7 @@ impl Worker {
                         },
 
                         Some(msg) => {
-                            if let Err(e) = self.handle_message(&msg) {
+                            if let Err(e) = self.handle_transport_message(&msg) {
                                 log::error!("{selfstr} error handling message: {e}");
                                 self.connected = false;
                             }
@@ -207,10 +207,86 @@ impl Worker {
         }
     }
 
-    /// Unpack the message and do what it says.
-    fn handle_message(&mut self, tmsg: &message::TransportMessage) -> Result<(), String> {
-        // TODO extract messages from body of transport message
-        // Should only be one message in the body, an API REQUEST message.
+    fn handle_transport_message(&mut self, tmsg: &message::TransportMessage) -> Result<(), String> {
+        let sender = BusAddress::new_from_string(tmsg.from())?;
+        for msg in tmsg.body().iter() {
+            self.handle_message(&sender, &msg)?;
+        }
+        Ok(())
+    }
+
+    fn handle_message(&mut self, sender: &BusAddress, msg: &message::Message) -> Result<(), String> {
+        match msg.mtype() {
+            message::MessageType::Disconnect => {
+                self.connected = false;
+                log::trace!("{self} received a DISCONNECT");
+                Ok(())
+            }
+            message::MessageType::Connect => {
+                log::trace!("{self} received a CONNECT");
+                self.connected = true;
+                // TODO send connect-ok message
+                Ok(())
+            }
+            message::MessageType::Request => {
+                log::trace!("{self} received a REQUEST");
+                self.handle_request(sender, msg)
+            }
+            _ => {
+                self.reply_bad_request(sender, msg, "Unexpected message type")
+            }
+        }
+    }
+
+    fn handle_request(&mut self, sender: &BusAddress, msg: &message::Message) -> Result<(), String> {
+
+        let method = match msg.payload() {
+            message::Payload::Method(m) => m,
+            _ => {
+                return self.reply_bad_request(
+                    sender, msg, "Request sent without payload");
+            }
+        };
+
+        // We have a well-formed Request message.
+        // Tell the parent we're going to be busy (unless we already have).
+        if !self.marked_active {
+            if let Err(e) = self.notify_state(WorkerState::Active) {
+                return Err(format!(
+                    "{self} failed to notify parent of Active state. Exiting. {e}"));
+            }
+            self.marked_active = true;
+        }
+
+        // Before we begin processing a service-level request, clear our
+        // personal message bus to avoid encountering any stale messages
+        // lingering from the previous conversation.
+        if !self.connected {
+            self.client().clear()?;
+        }
+
+        // Vec<json::JsonValue> => "jsonString1,jsonString2,..."
+        log::debug!("CALL: {} {}", method.method(),
+            method.params().iter().map(|p| p.dump()).collect::<Vec<_>>().join(", "));
+
+        Ok(())
+    }
+
+    fn reply_bad_request(&mut self, sender: &BusAddress,
+        msg: &message::Message, text: &str) -> Result<(), String> {
+
+        self.connected = false;
+
+        // TODO
+        /*
+        let msg = message::Message::new(
+            sender, &self.addr, req_id,
+            message::MessageType::BadRequest,
+            message::Payload::Error(String::from(msg))
+        );
+
+        self.bus.send(&msg)
+        */
         Ok(())
     }
 
