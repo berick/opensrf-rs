@@ -81,7 +81,7 @@ pub enum MessageStatus {
     ServiceNotFound = 406,
     Timeout = 408,
     Expfailed = 417,
-    InternalServErerror = 500,
+    InternalServerError = 500,
     NotImplemented = 501,
     ServiceUnavailable = 503,
     VersionNotSupported = 505,
@@ -112,7 +112,7 @@ impl From<isize> for MessageStatus {
             406 => MessageStatus::ServiceNotFound,
             408 => MessageStatus::Timeout,
             417 => MessageStatus::Expfailed,
-            500 => MessageStatus::InternalServErerror,
+            500 => MessageStatus::InternalServerError,
             501 => MessageStatus::NotImplemented,
             503 => MessageStatus::ServiceUnavailable,
             505 => MessageStatus::VersionNotSupported,
@@ -138,7 +138,7 @@ impl Into<&'static str> for MessageStatus {
             MessageStatus::MethodNotFound => "Method Not Found",
             MessageStatus::NotAllowed => "Not Allowed",
             MessageStatus::ServiceNotFound => "Service Not Found",
-            MessageStatus::InternalServErerror => "Internal Server Error",
+            MessageStatus::InternalServerError => "Internal Server Error",
             _ => "See Status Code",
         }
     }

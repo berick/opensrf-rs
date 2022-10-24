@@ -1,8 +1,9 @@
 use std::fmt;
 use regex::Regex;
-// TODO
-//type MethodHandler = fn(&mut RequestContext) -> Result<(), super::Error>;
-type MethodHandler = fn() -> Result<(), String>;
+use super::message;
+use super::client;
+
+type MethodHandler = fn(client::ClientHandle, &message::Method) -> Result<(), String>;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ParamCount {
@@ -37,7 +38,6 @@ impl fmt::Display for ParamCount {
     }
 }
 
-#[derive(Debug)]
 pub struct Method {
     /// Regex for matching to incoming API call names
     api_regex: Regex,

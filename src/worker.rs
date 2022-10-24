@@ -293,6 +293,33 @@ impl Worker {
             self.client().clear()?;
         }
 
+        let method = match self.find_method(request.method()) {
+            Some(m) => m,
+            None => {
+                // TODO send method-not-found response
+                return Err(format!(
+                    "API name '{}' not found for service {}",
+                    request.method(), self.service
+                ));
+            }
+        };
+
+        // Make sure the number of params sent by the caller matches the
+        // parameter count for the method.
+        if !ParamCount::matches(method.param_count(), request.params().len() as u8) {
+            return self.reply_bad_request(sender, msg,
+                &format!(
+                    "Invalid param count sent: method={} sent={} needed={}",
+                    request.method(), request.params().len(), method.param_count()
+                )
+            );
+        }
+
+        if let Err(err) = (method.handler())(self.client.clone(), &request) {
+            // TODO reply internal server error
+            return Err(format!("{self} method {} failed with {err}", request.method()));
+        }
+
         Ok(())
     }
 
@@ -304,30 +331,18 @@ impl Worker {
         }
 
 
-        // Look for a registered method whose API name matches the
-        // regex api spec for the requested method.
-        /*
+        // Look for a registered method whose API spec matches the
+        // api name for the requested method.
         for m in self.methods.iter() {
-
-            // Each registered method has an api name that may contain
-            // regex bits.  See if the requeste method matches the
-            // registered method.
-            let re = match Regex::new(m.api_name) {
-                Ok(r) => r,
-                Err(e) => {
-                    error!("Invalid API name spec: {} => {}", e, m.api_name);
-                    continue;
-                }
-            };
-
-            // Does this method match the requested method?
-            if re.is_match(api_name) {
-                trace!("Found a method name match on {} = {}", api_name, m.api_name);
+            if m.api_name_matches(api_name) {
+                // Store the found method under the requested name for
+                // faster lookup on subsequent calls.
                 self.known_methods.insert(api_name.to_string(), &m);
                 return Some(&m);
             }
         }
-        */
+
+        log::error!("{self} no method found matching api name: {api_name}");
 
         None
     }

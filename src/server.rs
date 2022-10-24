@@ -49,7 +49,6 @@ impl WorkerStateEvent {
     }
 }
 
-#[derive(Debug)]
 pub struct Server {
     config: Arc<Config>,
     service: String,
