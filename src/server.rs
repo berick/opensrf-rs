@@ -1,6 +1,7 @@
 use super::{Method, Config};
 use super::worker::Worker;
 use super::conf;
+use super::logging::Logger;
 use std::fmt;
 use std::thread;
 use std::sync::mpsc;
@@ -63,12 +64,21 @@ pub struct Server {
 
 impl Server {
 
-    pub fn new(service: &str, config: Config, methods: &'static [Method]) -> Self {
+    pub fn new(domain: &str, service: &str, mut config: Config, methods: &'static [Method]) -> Self {
 
         let sconf = match config.get_service_config(service) {
             Some(c) => c,
             None => panic!("No configuration found for service {}", service),
         };
+
+        let conn = match config.set_primary_connection("service", domain) {
+            Ok(c) => c,
+            Err(e) => panic!("Cannot set primary connection for domain {domain}")
+        };
+
+        let ctype = conn.connection_type();
+
+        Logger::new(ctype.log_level(), ctype.log_facility()).init().unwrap();
 
         // We have a single to-parent channel whose trasmitter is cloned
         // per thread.  Communication from worker threads to the parent

@@ -1,4 +1,5 @@
 use super::{Config, Client, Method, ParamCount, ClientHandle};
+use super::session::ServerSession;
 use super::server::{WorkerState, WorkerStateEvent};
 use super::message;
 use super::addr::BusAddress;
@@ -244,16 +245,7 @@ impl Worker {
             }
             message::MessageType::Request => {
                 log::trace!("{self} received a REQUEST");
-
-                if self.connected {
-                    let ct = self.cur_thread.as_ref().unwrap(); // Set at Connect
-                    if ct.ne(thread) {
-                        return self.reply_bad_request(sender, msg,
-                            "Request thread does not match in-progress thread");
-                    }
-                } else {
-                    self.cur_thread = Some(thread.to_string());
-                }
+                self.cur_thread = Some(thread.to_string());
                 self.handle_request(sender, msg)
             }
             _ => {
@@ -315,10 +307,20 @@ impl Worker {
             );
         }
 
-        if let Err(err) = (method.handler())(self.client.clone(), &request) {
+        let ses = ServerSession::new(
+            self.client.clone_client(),
+            self.cur_thread.as_ref().unwrap(), // required
+            msg.thread_trace(),
+            sender.clone(),
+            self.config.multi_domain_support()
+        );
+
+        if let Err(err) = (method.handler())(self.client.clone(), ses, &request) {
             // TODO reply internal server error
             return Err(format!("{self} method {} failed with {err}", request.method()));
         }
+
+        // TODO send request complete if not already sent via respond_complete
 
         Ok(())
     }

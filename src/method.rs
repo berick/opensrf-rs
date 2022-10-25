@@ -1,9 +1,12 @@
 use std::fmt;
 use regex::Regex;
 use super::message;
+use super::session;
 use super::client;
 
-type MethodHandler = fn(client::ClientHandle, &message::Method) -> Result<(), String>;
+const REGEX_MATCH_NOTHING: &str = "a^";
+
+type MethodHandler = fn(client::ClientHandle, session::ServerSession, &message::Method) -> Result<(), String>;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ParamCount {
@@ -40,30 +43,12 @@ impl fmt::Display for ParamCount {
 
 pub struct Method {
     /// Regex for matching to incoming API call names
-    api_regex: Regex,
-    param_count: ParamCount,
-    handler: MethodHandler
+    pub api_spec: &'static str,
+    pub param_count: ParamCount,
+    pub handler: MethodHandler
 }
 
 impl Method {
-
-    pub fn new(api_spec: &str,
-        param_count: ParamCount, handler: MethodHandler) -> Result<Self, String> {
-
-        let re = match Regex::new(api_spec) {
-            Ok(r) => r,
-            Err(e) => {
-                return Err(format!(
-                    "Invalid API name api_name: {} => {}", e, api_spec));
-            }
-        };
-
-        Ok(Method {
-            api_regex: re,
-            param_count,
-            handler,
-        })
-    }
 
     pub fn param_count(&self) -> &ParamCount {
         &self.param_count
@@ -73,7 +58,7 @@ impl Method {
         self.handler
     }
 
-    /// Returns true if the provided API name matches the api_regex for
+    /// Returns true if the provided API name matches the api regex for
     /// this method.
     ///
     /// ```
@@ -86,9 +71,17 @@ impl Method {
     ///
     /// assert_eq!(m.api_name_matches("opensrf.private.kazoo"), false);
     /// ```
-
     pub fn api_name_matches(&self, api_name: &str) -> bool {
-        if self.api_regex.is_match(api_name) {
+
+        let re = match Regex::new(&self.api_spec) {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("Invalid API name spec regex: {e} => {}", &self.api_spec);
+                return false;
+            }
+        };
+
+        if re.is_match(api_name) {
             log::debug!("Found a method match for {api_name}");
             return true;
         }

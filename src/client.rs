@@ -274,6 +274,10 @@ impl ClientHandle {
         self.client.borrow_mut().serializer = Some(serializer);
     }
 
+    pub fn clone_client(&self) -> Rc<RefCell<Client>> {
+        self.client.clone()
+    }
+
     pub fn send_router_command(
         &self,
         domain: &str,

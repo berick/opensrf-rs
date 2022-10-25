@@ -1,5 +1,6 @@
 use super::addr::BusAddress;
 use super::client::Client;
+use super::message;
 use super::message::Message;
 use super::message::MessageStatus;
 use super::message::MessageType;
@@ -73,7 +74,7 @@ impl Request {
     }
 }
 
-/// Internal API and session state maintenance.
+/// Client communication state maintenance.
 struct Session {
     /// Link to our Client so we can ask it to pull data from the Bus.
     client: Rc<RefCell<Client>>,
@@ -517,3 +518,101 @@ impl ResponseIterator {
         ResponseIterator { request }
     }
 }
+
+pub struct ServerSession {
+    /// Link to our Client so we can ask it to pull data from the Bus.
+    client: Rc<RefCell<Client>>,
+
+    /// Each session is identified on the network by a random thread string.
+    thread: String,
+
+    /// Who sent us a request.
+    remote_addr: BusAddress,
+
+    /// If enabled, stateless (non-connected) API calls will be delivered
+    /// to the router address on the primary domain instead of directly
+    /// to the target service.
+    multi_domain_support: bool,
+
+    /// Most recently used per-thread request id.
+    ///
+    /// Each new Request within a Session gets a new thread_trace.
+    /// Replies have the same thread_trace as their request.
+    thread_trace: usize,
+}
+
+impl fmt::Display for ServerSession {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ServerSession({})", &self.thread)
+    }
+}
+
+impl ServerSession {
+    pub fn new(
+        client: Rc<RefCell<Client>>,
+        thread: &str,
+        thread_trace: usize,
+        remote_addr: BusAddress,
+        multi_domain_support: bool
+    ) -> ServerSession {
+        ServerSession {
+            client,
+            remote_addr,
+            thread_trace,
+            thread: thread.to_string(),
+            multi_domain_support,
+        }
+    }
+
+    pub fn respond<T>(&self, value: T) -> Result<(), String>
+    where
+        T: Into<JsonValue>,
+    {
+        self.respond_to_client(value, false)
+    }
+
+    pub fn respond_complete<T>(&self, value: T) -> Result<(), String>
+    where
+        T: Into<JsonValue>,
+    {
+        self.respond_to_client(value, true)
+    }
+
+
+    pub fn respond_to_client<T>(&self, value: T, complete: bool) -> Result<(), String>
+    where
+        T: Into<JsonValue>,
+    {
+
+        // TODO move serializer steps into Client for shared use.
+        let mut value = json::from(value);
+        if let Some(s) = self.client.borrow().serializer() {
+            value = s.unpack(&value);
+        }
+
+        let stat = match complete {
+            false => MessageStatus::Ok,
+            _ => MessageStatus::Complete
+        };
+
+        let payload = Payload::Result(
+            message::Result::new(stat, "osrfResponse", "OK", value)
+        );
+
+        let msg = Message::new(
+            MessageType::Result,
+            self.thread_trace,
+            payload
+        );
+
+        let tmsg = TransportMessage::new(
+            self.remote_addr.full(),
+            self.client.borrow().address(),
+            &self.thread
+        );
+
+        self.client.borrow_mut().bus_mut().send(&tmsg)
+    }
+}
+
+

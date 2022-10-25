@@ -104,7 +104,7 @@ log-protect:
   - open-ils.actor.geo
 
 services:
-  opensrf.private:
+  opensrf.rsprivate:
     lang: rust
     keepalive: 5
     workers:
@@ -113,7 +113,7 @@ services:
       min-idle: 1
       max-idle: 5
       max-requests: 1000
-  opensrf.public:
+  opensrf.rspublic:
     lang: rust
     keepalive: 5
     workers:
