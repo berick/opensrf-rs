@@ -1,8 +1,9 @@
 use super::{Method, Config};
 use super::worker::Worker;
 use super::conf;
+use super::client::Client;
+use super::client::ClientHandle;
 use super::logging::Logger;
-use std::fmt;
 use std::thread;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -52,6 +53,7 @@ impl WorkerStateEvent {
 
 pub struct Server {
     config: Arc<Config>,
+    client: ClientHandle,
     service: String,
     methods: &'static [Method],
     // Worker threads are tracked via their bus address.
@@ -60,11 +62,13 @@ pub struct Server {
     worker_id_gen: u64,
     to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     to_parent_rx: mpsc::Receiver<WorkerStateEvent>,
+    stopping: bool,
 }
 
 impl Server {
 
     pub fn new(domain: &str, service: &str, mut config: Config, methods: &'static [Method]) -> Self {
+
 
         let sconf = match config.get_service_config(service) {
             Some(c) => c,
@@ -73,12 +77,19 @@ impl Server {
 
         let conn = match config.set_primary_connection("service", domain) {
             Ok(c) => c,
-            Err(e) => panic!("Cannot set primary connection for domain {domain}")
+            Err(e) => panic!("Cannot set primary connection for domain {}: {}", domain, e)
         };
 
         let ctype = conn.connection_type();
 
         Logger::new(ctype.log_level(), ctype.log_facility()).init().unwrap();
+
+        let config = config.to_shared();
+
+        let client = match Client::new(config.clone()) {
+            Ok(c) => c,
+            Err(e) => panic!("Server cannot connect to bus: {}", e),
+        };
 
         // We have a single to-parent channel whose trasmitter is cloned
         // per thread.  Communication from worker threads to the parent
@@ -88,10 +99,12 @@ impl Server {
             mpsc::Receiver<WorkerStateEvent>) = mpsc::sync_channel(0);
 
         Server {
-            config: config.to_shared(),
             service: service.to_string(),
             workers: HashMap::new(),
+            config,
+            client,
             methods,
+            stopping: false,
             worker_id_gen: 0,
             to_parent_tx: tx,
             to_parent_rx: rx,
@@ -161,7 +174,22 @@ impl Server {
         };
     }
 
+    fn register_routers(&mut self) -> Result<(), String> {
+        for domain in self.config.domains() {
+            self.client.send_router_command(domain.name(), "register", Some(&self.service), false);
+        }
+        Ok(())
+    }
+
+    fn unregister_routers(&mut self) -> Result<(), String> {
+        for domain in self.config.domains() {
+            self.client.send_router_command(domain.name(), "unregister", Some(&self.service), false);
+        }
+        Ok(())
+    }
+
     pub fn listen(&mut self) {
+        self.register_routers().expect("Error registring routers");
         self.spawn_threads();
 
         let duration = Duration::from_secs(CHECK_COMMANDS_TIMEOUT);
@@ -174,14 +202,21 @@ impl Server {
             // trying again.  This leaves room for other potential
             // housekeeping between recv calls.
             //
-            // This can will return an Err on timeout or a
+            // This will return an Err on timeout or a
             // failed/disconnected thread.
             if let Ok(evt) = self.to_parent_rx.recv_timeout(duration) {
                 self.handle_worker_event(&evt);
             }
 
             self.check_failed_threads();
+
+            // TODO support shutdown
+            if self.stopping {
+                break;
+            }
         }
+
+        self.unregister_routers().ok(); // Assume it's Ok
     }
 
     // Check for threads that panic!ed and were unable to send any
@@ -189,7 +224,7 @@ impl Server {
     fn check_failed_threads(&mut self) {
         let failed: Vec<u64> = self.workers
             .iter()
-            .filter(|(k, v)| v.join_handle.is_finished())
+            .filter(|(_, v)| v.join_handle.is_finished())
             .map(|(k, _)| *k) // k is a &u64
             .collect();
 

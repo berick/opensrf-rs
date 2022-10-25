@@ -2,7 +2,7 @@ use opensrf::Client;
 use opensrf::Config;
 use opensrf::Logger;
 
-const SERVICE: &str = "opensrf.settings";
+const SERVICE: &str = "opensrf.rsprivate";
 const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {

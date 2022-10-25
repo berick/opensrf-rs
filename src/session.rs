@@ -334,7 +334,7 @@ impl Session {
 
         let req = Message::new(MessageType::Request, trace, payload);
 
-        let tm = TransportMessage::new_with_body(
+        let tm = TransportMessage::with_body(
             self.remote_addr().full(),
             self.client().address(),
             self.thread(),
@@ -374,7 +374,7 @@ impl Session {
 
         let msg = Message::new(MessageType::Connect, trace, Payload::NoPayload);
 
-        let tm = TransportMessage::new_with_body(
+        let tm = TransportMessage::with_body(
             self.remote_addr().full(),
             self.client().address(),
             self.thread(),
@@ -415,7 +415,7 @@ impl Session {
 
         let msg = Message::new(MessageType::Disconnect, trace, Payload::NoPayload);
 
-        let tm = TransportMessage::new_with_body(
+        let tm = TransportMessage::with_body(
             self.remote_addr().full(),
             self.client().address(),
             self.thread(),
@@ -529,11 +529,6 @@ pub struct ServerSession {
     /// Who sent us a request.
     remote_addr: BusAddress,
 
-    /// If enabled, stateless (non-connected) API calls will be delivered
-    /// to the router address on the primary domain instead of directly
-    /// to the target service.
-    multi_domain_support: bool,
-
     /// Most recently used per-thread request id.
     ///
     /// Each new Request within a Session gets a new thread_trace.
@@ -553,14 +548,12 @@ impl ServerSession {
         thread: &str,
         thread_trace: usize,
         remote_addr: BusAddress,
-        multi_domain_support: bool
     ) -> ServerSession {
         ServerSession {
             client,
             remote_addr,
             thread_trace,
             thread: thread.to_string(),
-            multi_domain_support,
         }
     }
 
@@ -605,13 +598,21 @@ impl ServerSession {
             payload
         );
 
-        let tmsg = TransportMessage::new(
+        let tmsg = TransportMessage::with_body(
             self.remote_addr.full(),
             self.client.borrow().address(),
-            &self.thread
+            &self.thread,
+            msg
         );
 
-        self.client.borrow_mut().bus_mut().send(&tmsg)
+        let domain = match self.remote_addr.domain() {
+            Some(d) => d,
+            None => {
+                return Err(format!("Cannot respond to address with no domain"));
+            }
+        };
+
+        self.client.borrow_mut().get_domain_bus(domain)?.send(&tmsg)
     }
 }
 

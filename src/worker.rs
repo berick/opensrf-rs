@@ -2,6 +2,11 @@ use super::{Config, Client, Method, ParamCount, ClientHandle};
 use super::session::ServerSession;
 use super::server::{WorkerState, WorkerStateEvent};
 use super::message;
+use super::message::Message;
+use super::message::MessageStatus;
+use super::message::MessageType;
+use super::message::TransportMessage;
+use super::message::Payload;
 use super::addr::BusAddress;
 use super::conf;
 use std::fmt;
@@ -10,7 +15,7 @@ use std::time;
 use std::sync::mpsc;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::cell::{Ref, RefMut};
+use std::cell::RefMut;
 
 /// A Worker runs in its own thread and responds to API requests.
 pub struct Worker {
@@ -85,8 +90,6 @@ impl Worker {
     }
 
     // Configuration for the service we are hosting.
-    //
-    // Assumes we have a config for our service and panics if none is found.
     fn service_conf(&self) -> &conf::Service {
         &self.service_conf
     }
@@ -225,11 +228,13 @@ impl Worker {
 
     fn handle_message(&mut self, thread: &str, sender: &BusAddress, msg: &message::Message) -> Result<(), String> {
         match msg.mtype() {
+
             message::MessageType::Disconnect => {
                 log::trace!("{self} received a DISCONNECT");
                 self.reset()?;
                 Ok(())
             }
+
             message::MessageType::Connect => {
                 log::trace!("{self} received a CONNECT");
 
@@ -239,19 +244,43 @@ impl Worker {
 
                 self.connected = true;
                 self.cur_thread = Some(thread.to_string());
-
-                // TODO send connect-ok message
-                Ok(())
+                self.send_connect_ok(thread, msg.thread_trace(), sender)
             }
+
             message::MessageType::Request => {
                 log::trace!("{self} received a REQUEST");
                 self.cur_thread = Some(thread.to_string());
                 self.handle_request(sender, msg)
             }
+
             _ => {
                 self.reply_bad_request(sender, msg, "Unexpected message type")
             }
         }
+    }
+
+    fn send_connect_ok(&mut self, thread: &str, thread_trace: usize, sender: &BusAddress) -> Result<(), String> {
+        let payload = Payload::Status(
+            message::Status::new(MessageStatus::Ok, "osrfStatus", "OK")
+        );
+
+        let msg = Message::new(MessageType::Status, thread_trace, payload);
+
+        let tmsg = TransportMessage::with_body(
+            sender.full(),
+            self.client().address(),
+            thread,
+            msg
+        );
+
+        let domain = match sender.domain().as_ref() {
+            Some(d) => d.to_string(),
+            None => {
+                return Err(format!("Sender address does not contain a domain"));
+            }
+        };
+
+        self.client.client_mut().get_domain_bus(&domain)?.send(&tmsg)
     }
 
     fn handle_request(&mut self, sender: &BusAddress, msg: &message::Message) -> Result<(), String> {
@@ -312,7 +341,6 @@ impl Worker {
             self.cur_thread.as_ref().unwrap(), // required
             msg.thread_trace(),
             sender.clone(),
-            self.config.multi_domain_support()
         );
 
         if let Err(err) = (method.handler())(self.client.clone(), ses, &request) {

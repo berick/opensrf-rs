@@ -9,7 +9,7 @@ use opensrf::method;
 use opensrf::conf;
 
 fn main() {
-    let args: Vec<String> = env::args().collect(); // TODO config file
+    let _args: Vec<String> = env::args().collect(); // TODO config file
 
     let mut server = Server::new(
         "private.localhost",
@@ -21,7 +21,7 @@ fn main() {
     server.listen();
 }
 
-const METHODS: &'static [method::Method]  = &[
+const METHODS: &'static [method::Method] = &[
     method::Method {
         api_spec: "opensrf.rsprivate.echo",
         param_count: method::ParamCount::Any,
@@ -30,7 +30,7 @@ const METHODS: &'static [method::Method]  = &[
     method::Method {
         api_spec: "opensrf.rsprivate.time",
         param_count: method::ParamCount::Any,
-        handler: echo
+        handler: time
     },
     method::Method {
         api_spec: "opensrf.rsprivate.sleep",
@@ -39,26 +39,26 @@ const METHODS: &'static [method::Method]  = &[
     },
 ];
 
-fn echo(client: ClientHandle,
+fn echo(_client: ClientHandle,
     ses: ServerSession, method: &message::Method) -> Result<(), String> {
 
     for p in method.params() {
-        ses.respond(p.clone());
+        ses.respond(p.clone())?;
     }
 
     Ok(())
 }
 
-fn time(client: ClientHandle,
-    ses: ServerSession, method: &message::Method) -> Result<(), String> {
+fn time(_client: ClientHandle,
+    ses: ServerSession, _method: &message::Method) -> Result<(), String> {
 
     let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    ses.respond(json::from(dur.as_secs()));
+    ses.respond(json::from(dur.as_secs()))?;
     Ok(())
 }
 
-fn sleep(client: ClientHandle,
-    ses: ServerSession, method: &message::Method) -> Result<(), String> {
+fn sleep(_client: ClientHandle,
+    _ses: ServerSession, method: &message::Method) -> Result<(), String> {
 
     // We known params contains at least one values because of Server
     // param count checks.

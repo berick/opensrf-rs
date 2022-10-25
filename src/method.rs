@@ -4,8 +4,6 @@ use super::message;
 use super::session;
 use super::client;
 
-const REGEX_MATCH_NOTHING: &str = "a^";
-
 type MethodHandler = fn(client::ClientHandle, session::ServerSession, &message::Method) -> Result<(), String>;
 
 #[derive(Debug, Copy, Clone)]

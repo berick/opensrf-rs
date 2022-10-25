@@ -194,7 +194,7 @@ impl TransportMessage {
         }
     }
 
-    pub fn new_with_body(to: &str, from: &str, thread: &str, msg: Message) -> Self {
+    pub fn with_body(to: &str, from: &str, thread: &str, msg: Message) -> Self {
         let mut tm = TransportMessage::new(to, from, thread);
         tm.body.push(msg);
         tm

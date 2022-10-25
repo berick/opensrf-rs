@@ -498,7 +498,7 @@ impl Router {
 
         let stat = Message::new(MessageType::Status, trace, payload);
 
-        let tm = TransportMessage::new_with_body(
+        let tm = TransportMessage::with_body(
             tm.from(), // Bounce it back
             self.listen_address.full(),
             tm.thread(),
