@@ -17,9 +17,11 @@ fn main() -> Result<(), String> {
     let mut client = Client::new(conf.to_shared())?;
 
     // ---------------------------------------------------------
-    // EXAMPLE SESSION + MANUAL REQUEST ------------------------
+    // SESSION + MANUAL REQUEST --------------------------------
 
     let mut ses = client.session(SERVICE);
+
+    ses.connect()?; // Optional
 
     let params = vec!["Hello", "World", "Pamplemousse"];
 
@@ -31,13 +33,15 @@ fn main() -> Result<(), String> {
         println!("Response: {}", resp.dump());
     }
 
+    ses.disconnect()?; // Only required if connected
+
     // ---------------------------------------------------------
-    // EXAMPLE SESSION REQUEST WITH ITERATOR -------------------
+    // SESSION REQUEST WITH ITERATOR ---------------------------
 
     let mut ses = client.session(SERVICE);
 
-    // Requests consume our params vec, so we need a new one
-    // for each request.
+    // Requests consume our params vec, so we need a new (or cloned) 
+    // one for each request.
     let params = vec!["Hello", "World", "Pamplemousse"];
 
     for resp in ses.sendrecv(METHOD, params)? {
@@ -45,7 +49,7 @@ fn main() -> Result<(), String> {
     }
 
     // --------------------------------------------------------
-    // EXAMPLE ONE-OFF REQUEST WITH ITERATOR ------------------
+    // ONE-OFF REQUEST WITH ITERATOR --------------------------
 
     let params = vec!["Hello", "World", "Pamplemousse"];
 
