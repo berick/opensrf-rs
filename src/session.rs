@@ -527,7 +527,7 @@ pub struct ServerSession {
     thread: String,
 
     /// Who sent us a request.
-    remote_addr: ClientAddress,
+    sender: ClientAddress,
 
     /// True if we have already sent a COMPLETE message to the caller.
     /// Use this to avoid sending replies after a COMPLETE.
@@ -537,7 +537,7 @@ pub struct ServerSession {
     ///
     /// Each new Request within a Session gets a new thread_trace.
     /// Replies have the same thread_trace as their request.
-    thread_trace: usize,
+    last_thread_trace: usize,
 }
 
 impl fmt::Display for ServerSession {
@@ -550,16 +550,32 @@ impl ServerSession {
     pub fn new(
         client: Rc<RefCell<Client>>,
         thread: &str,
-        thread_trace: usize,
-        remote_addr: ClientAddress,
+        last_thread_trace: usize,
+        sender: ClientAddress,
     ) -> ServerSession {
         ServerSession {
             client,
-            remote_addr,
-            thread_trace,
+            sender,
+            last_thread_trace,
             responded_complete: false,
             thread: thread.to_string(),
         }
+    }
+
+    pub fn last_thread_trace(&self) -> usize {
+        self.last_thread_trace
+    }
+
+    pub fn set_last_thread_trace(&mut self, trace: usize) {
+        self.last_thread_trace = trace
+    }
+
+    pub fn thread(&self) -> &str {
+        &self.thread
+    }
+
+    pub fn sender(&self) -> &ClientAddress {
+        &self.sender
     }
 
     pub fn responded_complete(&self) -> bool {
@@ -577,7 +593,7 @@ impl ServerSession {
 
         let msg = Message::new(
             MessageType::Result,
-            self.thread_trace,
+            self.last_thread_trace,
             Payload::Result(message::Result::new(
                 MessageStatus::Ok,
                 "osrfResponse",
@@ -587,13 +603,13 @@ impl ServerSession {
         );
 
         let tmsg = TransportMessage::with_body(
-            self.remote_addr.full(),
+            self.sender.full(),
             self.client.borrow().address(),
             &self.thread,
             msg,
         );
 
-        let domain = self.remote_addr.domain();
+        let domain = self.sender.domain();
 
         self.client.borrow_mut().get_domain_bus(domain)?.send(&tmsg)
     }
@@ -620,7 +636,7 @@ impl ServerSession {
 
         let msg = Message::new(
             MessageType::Status,
-            self.thread_trace,
+            self.last_thread_trace,
             Payload::Status(message::Status::new(
                 MessageStatus::Complete,
                 "osrfStatus",
@@ -629,13 +645,13 @@ impl ServerSession {
         );
 
         let tmsg = TransportMessage::with_body(
-            self.remote_addr.full(),
+            self.sender.full(),
             self.client.borrow().address(),
             &self.thread,
             msg,
         );
 
-        let domain = self.remote_addr.domain();
+        let domain = self.sender.domain();
 
         self.client.borrow_mut().get_domain_bus(domain)?.send(&tmsg)
     }
