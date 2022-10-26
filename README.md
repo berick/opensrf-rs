@@ -10,7 +10,6 @@ const SERVICE: &str = "opensrf.rsprivate";
 const METHOD: &str = "opensrf.rsprivate.echo";
 
 fn main() -> Result<(), String> {
-
     let mut conf = Config::from_file("conf/opensrf.yml")?;
     conf.set_primary_connection("service", "private.localhost")?;
 
@@ -64,5 +63,5 @@ fn main() -> Result<(), String> {
 ## Example
 
 ```sh
-RUST_LOG=trace cargo run --example client
+cargo run --example client-demo
 ```

@@ -74,9 +74,8 @@ impl Server {
         mut config: Config,
         methods: &'static [Method],
     ) -> Self {
-        let sconf = match config.get_service_config(service) {
-            Some(c) => c,
-            None => panic!("No configuration found for service {}", service),
+        if config.get_service_config(service).is_none() {
+            panic!("No configuration found for service {}", service);
         };
 
         let conn = match config.set_primary_connection("service", domain) {
@@ -195,8 +194,12 @@ impl Server {
 
     fn register_routers(&mut self) -> Result<(), String> {
         for domain in self.config.domains() {
-            self.client
-                .send_router_command(domain.name(), "register", Some(&self.service), false);
+            self.client.send_router_command(
+                domain.name(),
+                "register",
+                Some(&self.service),
+                false
+            )?;
         }
         Ok(())
     }
@@ -208,21 +211,29 @@ impl Server {
                 "unregister",
                 Some(&self.service),
                 false,
-            );
+            )?;
         }
         Ok(())
     }
 
-    fn setup_signal_handlers(&self) {
+    fn setup_signal_handlers(&self) -> Result<(), String> {
         // If any of these signals occur, our self.stopping flag will be set to true
-        signal_hook::flag::register(signal_hook::consts::SIGTERM, self.stopping.clone());
-        signal_hook::flag::register(signal_hook::consts::SIGINT, self.stopping.clone());
+        for sig in [
+            signal_hook::consts::SIGTERM,
+            signal_hook::consts::SIGINT
+        ] {
+            if let Err(e) = signal_hook::flag::register(sig, self.stopping.clone()) {
+                return Err(format!("Cannot register signal handler: {e}"));
+            }
+        }
+
+        Ok(())
     }
 
-    pub fn listen(&mut self) {
-        self.register_routers().expect("Error registring routers");
+    pub fn listen(&mut self) -> Result<(), String> {
+        self.register_routers()?;
         self.spawn_threads();
-        self.setup_signal_handlers();
+        self.setup_signal_handlers()?;
 
         let duration = Duration::from_secs(CHECK_COMMANDS_TIMEOUT);
 
@@ -250,7 +261,7 @@ impl Server {
             }
         }
 
-        self.unregister_routers().ok(); // Assume it's Ok
+        self.unregister_routers()
     }
 
     // Check for threads that panic!ed and were unable to send any

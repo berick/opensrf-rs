@@ -36,7 +36,7 @@ fn main() {
         METHODS,
     );
 
-    server.listen();
+    server.listen().unwrap();
 }
 
 fn echo(

@@ -1,4 +1,4 @@
-use super::addr::BusAddress;
+use super::addr::{BusAddress, ClientAddress};
 use super::client::Client;
 use super::message;
 use super::message::Message;
@@ -527,7 +527,7 @@ pub struct ServerSession {
     thread: String,
 
     /// Who sent us a request.
-    remote_addr: BusAddress,
+    remote_addr: ClientAddress,
 
     /// True if we have already sent a COMPLETE message to the caller.
     /// Use this to avoid sending replies after a COMPLETE.
@@ -551,7 +551,7 @@ impl ServerSession {
         client: Rc<RefCell<Client>>,
         thread: &str,
         thread_trace: usize,
-        remote_addr: BusAddress,
+        remote_addr: ClientAddress,
     ) -> ServerSession {
         ServerSession {
             client,
@@ -593,12 +593,7 @@ impl ServerSession {
             msg,
         );
 
-        let domain = match self.remote_addr.domain() {
-            Some(d) => d,
-            None => {
-                return Err(format!("Cannot respond to address with no domain"));
-            }
-        };
+        let domain = self.remote_addr.domain();
 
         self.client.borrow_mut().get_domain_bus(domain)?.send(&tmsg)
     }
@@ -640,12 +635,7 @@ impl ServerSession {
             msg,
         );
 
-        let domain = match self.remote_addr.domain() {
-            Some(d) => d,
-            None => {
-                return Err(format!("Cannot respond to address with no domain"));
-            }
-        };
+        let domain = self.remote_addr.domain();
 
         self.client.borrow_mut().get_domain_bus(domain)?.send(&tmsg)
     }

@@ -1,4 +1,4 @@
-use super::addr::BusAddress;
+use super::addr::ClientAddress;
 use super::conf;
 use super::message::TransportMessage;
 use log::{debug, error, trace};
@@ -11,7 +11,8 @@ use std::time;
 pub struct Bus {
     connection: redis::Connection,
 
-    address: BusAddress,
+    // Every bus connection has a unique client address.
+    address: ClientAddress,
 
     domain: String,
 }
@@ -36,7 +37,7 @@ impl Bus {
             }
         };
 
-        let addr = BusAddress::new_for_client(config.domain().name());
+        let addr = ClientAddress::new(config.domain().name());
 
         let mut bus = Bus {
             domain: config.domain().name().to_string(),
@@ -91,7 +92,7 @@ impl Bus {
         })
     }
 
-    pub fn address(&self) -> &BusAddress {
+    pub fn address(&self) -> &ClientAddress {
         &self.address
     }
 
@@ -277,7 +278,7 @@ impl Bus {
         self.send_to(msg, msg.to())
     }
 
-    /// Sends a TransportMessage to the specified BusAddress, regardless
+    /// Sends a TransportMessage to the specified ClientAddress, regardless
     /// of what value is in the msg.to() field.
     pub fn send_to(&mut self, msg: &TransportMessage, recipient: &str) -> Result<(), String> {
         let json_str = msg.to_json_value().dump();
@@ -297,6 +298,7 @@ impl Bus {
         Ok(())
     }
 
+    /// Remove all pending data from the stream while leaving the stream intact.
     pub fn clear_stream(&mut self) -> Result<(), String> {
         let sname = self.address().full().to_string();
         let maxlen = StreamMaxlen::Equals(0);
@@ -321,16 +323,12 @@ impl Bus {
         Ok(())
     }
 
-    // Rust redis has no disconnect, but calling a method named
-    // disconnect will makes sense.
+    /// Delete our stream.
+    ///
+    /// Redis connectionts are closed on free, so no specific
+    /// disconnect action is taken.
     pub fn disconnect(&mut self) -> Result<(), String> {
-        // Avoid deleting the stream for opensrf:service: connections
-        // since those are shared.
-        if self.address().is_client() {
-            self.delete_stream()?;
-        }
-
-        Ok(())
+        self.delete_stream()
     }
 }
 

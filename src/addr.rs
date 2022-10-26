@@ -39,27 +39,6 @@ impl fmt::Display for BusAddress {
 }
 
 impl BusAddress {
-    /// Create a new bus address for a client.
-    pub fn new_for_client(domain: &str) -> Self {
-        let full = format!(
-            "{}:client:{}:{}:{}:{}",
-            BUS_ADDR_NAMESPACE,
-            domain,
-            &gethostname().into_string().unwrap(),
-            process::id(),
-            &util::random_number(6)
-        );
-
-        BusAddress {
-            full,
-            namespace: BUS_ADDR_NAMESPACE.to_string(),
-            domain: Some(domain.to_string()),
-            service: None,
-            is_client: true,
-            is_service: false,
-            is_router: false,
-        }
-    }
 
     /// Create a new bus address for a router.
     pub fn new_for_router(domain: &str) -> Self {
@@ -153,5 +132,70 @@ impl BusAddress {
     }
     pub fn is_router(&self) -> bool {
         self.is_router
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientAddress {
+    addr: BusAddress
+}
+
+impl ClientAddress {
+
+    pub fn from_addr(addr: BusAddress) -> Result<Self, String> {
+        if addr.is_client() {
+            Ok(ClientAddress { addr })
+        } else {
+            Err(format!("Cannot create a ClientAddress from a non-client BusAddress"))
+        }
+    }
+
+    pub fn from_string(full: &str) -> Result<Self, String> {
+        let addr = BusAddress::new_from_string(full)?;
+        if !addr.is_client() {
+            return Err(format!("Invalid ClientAddress string: {full}"));
+        }
+        Ok(ClientAddress { addr })
+    }
+
+    pub fn full(&self) -> &str {
+        self.addr.full()
+    }
+
+    pub fn new(domain: &str) -> Self {
+        let full = format!(
+            "{}:client:{}:{}:{}:{}",
+            BUS_ADDR_NAMESPACE,
+            domain,
+            &gethostname().into_string().unwrap(),
+            process::id(),
+            &util::random_number(6)
+        );
+
+        ClientAddress {
+            addr: BusAddress {
+                full,
+                namespace: BUS_ADDR_NAMESPACE.to_string(),
+                domain: Some(domain.to_string()),
+                service: None,
+                is_client: true,
+                is_service: false,
+                is_router: false,
+            }
+        }
+    }
+
+    pub fn addr(&self) -> &BusAddress {
+        &self.addr
+    }
+
+    pub fn domain(&self) -> &str {
+        self.addr().domain().unwrap()
+    }
+}
+
+impl fmt::Display for ClientAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ClientAddress={}", self.full())
     }
 }

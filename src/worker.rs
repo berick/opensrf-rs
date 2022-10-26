@@ -1,4 +1,4 @@
-use super::addr::BusAddress;
+use super::addr::{BusAddress, ClientAddress};
 use super::conf;
 use super::message;
 use super::message::Message;
@@ -35,8 +35,6 @@ pub struct Worker {
     // the name spec of one of our configured methods.
     known_methods: HashMap<String, &'static Method>,
 
-    config: Arc<Config>,
-
     // Keep a local copy for convenience
     service_conf: conf::Service,
 
@@ -63,24 +61,15 @@ impl Worker {
         methods: &'static [Method],
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) -> Result<Worker, String> {
-        let sconf = match config
-            .services()
-            .iter()
-            .filter(|s| s.name().eq(&service))
-            .next()
-        {
-            Some(sc) => sc.clone(),
-            None => {
-                return Err(format!("No configuration for service {service}"));
-            }
-        };
 
+        // The presence of a config for our service is confirmed
+        // in the Server.
+        let sconf = config.get_service_config(&service).unwrap().clone();
         let client = Client::new(config.clone())?;
 
         Ok(Worker {
             service,
             worker_id,
-            config,
             methods,
             client,
             to_parent_tx,
@@ -217,7 +206,7 @@ impl Worker {
     }
 
     fn handle_transport_message(&mut self, tmsg: &message::TransportMessage) -> Result<(), String> {
-        let sender = BusAddress::new_from_string(tmsg.from())?;
+        let sender = ClientAddress::from_string(tmsg.from())?;
         for msg in tmsg.body().iter() {
             self.handle_message(tmsg.thread(), &sender, &msg)?;
         }
@@ -234,7 +223,7 @@ impl Worker {
     fn handle_message(
         &mut self,
         thread: &str,
-        sender: &BusAddress,
+        sender: &ClientAddress,
         msg: &message::Message,
     ) -> Result<(), String> {
         match msg.mtype() {
@@ -248,7 +237,7 @@ impl Worker {
                 log::trace!("{self} received a CONNECT");
 
                 if self.connected {
-                    return self.reply_bad_request(sender, msg, "Worker is already connected");
+                    return self.reply_bad_request(thread, sender, msg, "Worker is already connected");
                 }
 
                 self.connected = true;
@@ -262,7 +251,7 @@ impl Worker {
                 self.handle_request(thread, sender, msg)
             }
 
-            _ => self.reply_bad_request(sender, msg, "Unexpected message type"),
+            _ => self.reply_bad_request(thread, sender, msg, "Unexpected message type"),
         }
     }
 
@@ -270,7 +259,7 @@ impl Worker {
         &mut self,
         thread: &str,
         thread_trace: usize,
-        sender: &BusAddress,
+        sender: &ClientAddress,
     ) -> Result<(), String> {
         let payload = Payload::Status(message::Status::new(MessageStatus::Ok, "OK", "osrfStatus"));
 
@@ -278,16 +267,9 @@ impl Worker {
 
         let tmsg = TransportMessage::with_body(sender.full(), self.client().address(), thread, msg);
 
-        let domain = match sender.domain().as_ref() {
-            Some(d) => d.to_string(),
-            None => {
-                return Err(format!("Sender address does not contain a domain"));
-            }
-        };
-
         self.client
             .client_mut()
-            .get_domain_bus(&domain)?
+            .get_domain_bus(sender.domain())?
             .send(&tmsg)
     }
 
@@ -296,7 +278,7 @@ impl Worker {
         thread: &str,
         thread_trace: usize,
         method: &str,
-        sender: &BusAddress,
+        sender: &ClientAddress,
     ) -> Result<(), String> {
         log::error!("Method not found: {method}");
 
@@ -310,29 +292,22 @@ impl Worker {
 
         let tmsg = TransportMessage::with_body(sender.full(), self.client().address(), thread, msg);
 
-        let domain = match sender.domain().as_ref() {
-            Some(d) => d.to_string(),
-            None => {
-                return Err(format!("Sender address does not contain a domain"));
-            }
-        };
-
         self.client
             .client_mut()
-            .get_domain_bus(&domain)?
+            .get_domain_bus(sender.domain())?
             .send(&tmsg)
     }
 
     fn handle_request(
         &mut self,
         thread: &str,
-        sender: &BusAddress,
+        sender: &ClientAddress,
         msg: &message::Message,
     ) -> Result<(), String> {
         let request = match msg.payload() {
             message::Payload::Method(m) => m,
             _ => {
-                return self.reply_bad_request(sender, msg, "Request sent without payload");
+                return self.reply_bad_request(thread, sender, msg, "Request sent without payload");
             }
         };
 
@@ -382,6 +357,7 @@ impl Worker {
         // parameter count for the method.
         if !ParamCount::matches(method.param_count(), request.params().len() as u8) {
             return self.reply_bad_request(
+                thread,
                 sender,
                 msg,
                 &format!(
@@ -439,23 +415,34 @@ impl Worker {
 
     fn reply_bad_request(
         &mut self,
-        sender: &BusAddress,
+        thread: &str,
+        sender: &ClientAddress,
         msg: &message::Message,
         text: &str,
     ) -> Result<(), String> {
         self.connected = false;
 
-        // TODO
-        /*
-        let msg = message::Message::new(
-            sender, &self.addr, req_id,
-            message::MessageType::BadRequest,
-            message::Payload::Error(String::from(msg))
+        let tmsg = TransportMessage::with_body(
+            sender.full(),
+            self.client().address(),
+            thread,
+            Message::new(
+                MessageType::Status,
+                msg.thread_trace(),
+                Payload::Status(
+                    message::Status::new(
+                        MessageStatus::BadRequest,
+                        &format!("Bad Request: {text}"),
+                        "osrfStatus"
+                    )
+                )
+            )
         );
 
-        self.bus.send(&msg)
-        */
-        Ok(())
+        self.client
+            .client_mut()
+            .get_domain_bus(sender.domain())?
+            .send(&tmsg)
     }
 
     /// Notify the parent process of this worker's active state.
