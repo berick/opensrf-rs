@@ -15,6 +15,7 @@ redis = { version = "0.21.6", features = ["streams"] }
 gethostname = "0.2.3"
 threadpool = "1.8.1"
 regex = "1.6"
+signal-hook = "0.3.14"
 
 [[bin]]
 name = "router"

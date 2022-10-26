@@ -9,10 +9,12 @@ use std::sync::mpsc;
 use std::time::Duration;
 use std::collections::HashMap;
 use std::sync::Arc;
+use signal_hook;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Warn when there are fewer than this many idle threads
 const IDLE_THREAD_WARN_THRESHOLD: usize = 1;
-const CHECK_COMMANDS_TIMEOUT: u64 = 5;
+const CHECK_COMMANDS_TIMEOUT: u64 = 3;
 
 #[derive(Debug)]
 struct WorkerThread {
@@ -62,7 +64,7 @@ pub struct Server {
     worker_id_gen: u64,
     to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     to_parent_rx: mpsc::Receiver<WorkerStateEvent>,
-    stopping: bool,
+    stopping: Arc<AtomicBool>,
 }
 
 impl Server {
@@ -104,10 +106,10 @@ impl Server {
             config,
             client,
             methods,
-            stopping: false,
             worker_id_gen: 0,
             to_parent_tx: tx,
             to_parent_rx: rx,
+            stopping: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -188,9 +190,18 @@ impl Server {
         Ok(())
     }
 
+    fn setup_signal_handlers(&self) {
+        // If any of these signals occur, our self.stopping flag will be set to true
+        signal_hook::flag::register(
+            signal_hook::consts::SIGTERM, self.stopping.clone());
+        signal_hook::flag::register(
+            signal_hook::consts::SIGINT, self.stopping.clone());
+    }
+
     pub fn listen(&mut self) {
         self.register_routers().expect("Error registring routers");
         self.spawn_threads();
+        self.setup_signal_handlers();
 
         let duration = Duration::from_secs(CHECK_COMMANDS_TIMEOUT);
 
@@ -210,8 +221,9 @@ impl Server {
 
             self.check_failed_threads();
 
-            // TODO support shutdown
-            if self.stopping {
+            // Did a signal set our "stopping" flag?
+            if self.stopping.load(Ordering::Relaxed) {
+                log::info!("We received a stop signal, exiting");
                 break;
             }
         }

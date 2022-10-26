@@ -250,7 +250,7 @@ impl Worker {
             message::MessageType::Request => {
                 log::trace!("{self} received a REQUEST");
                 self.cur_thread = Some(thread.to_string());
-                self.handle_request(sender, msg)
+                self.handle_request(thread, sender, msg)
             }
 
             _ => {
@@ -261,7 +261,7 @@ impl Worker {
 
     fn send_connect_ok(&mut self, thread: &str, thread_trace: usize, sender: &BusAddress) -> Result<(), String> {
         let payload = Payload::Status(
-            message::Status::new(MessageStatus::Ok, "osrfStatus", "OK")
+            message::Status::new(MessageStatus::Ok, "OK", "osrfStatus")
         );
 
         let msg = Message::new(MessageType::Status, thread_trace, payload);
@@ -283,7 +283,43 @@ impl Worker {
         self.client.client_mut().get_domain_bus(&domain)?.send(&tmsg)
     }
 
-    fn handle_request(&mut self, sender: &BusAddress, msg: &message::Message) -> Result<(), String> {
+    fn send_method_not_found(
+        &mut self,
+        thread: &str,
+        thread_trace: usize,
+        method: &str,
+        sender: &BusAddress
+    ) -> Result<(), String> {
+
+        log::error!("Method not found: {method}");
+
+        let payload = Payload::Status(
+            message::Status::new(
+                MessageStatus::MethodNotFound, "Method Not Found", "osrfStatus"
+            )
+        );
+
+        let msg = Message::new(MessageType::Status, thread_trace, payload);
+
+        let tmsg = TransportMessage::with_body(
+            sender.full(),
+            self.client().address(),
+            thread,
+            msg
+        );
+
+        let domain = match sender.domain().as_ref() {
+            Some(d) => d.to_string(),
+            None => {
+                return Err(format!("Sender address does not contain a domain"));
+            }
+        };
+
+        self.client.client_mut().get_domain_bus(&domain)?.send(&tmsg)
+    }
+
+
+    fn handle_request(&mut self, thread: &str, sender: &BusAddress, msg: &message::Message) -> Result<(), String> {
 
         let request = match msg.payload() {
             message::Payload::Method(m) => m,
@@ -317,11 +353,8 @@ impl Worker {
         let method = match self.find_method(request.method()) {
             Some(m) => m,
             None => {
-                // TODO send method-not-found response
-                return Err(format!(
-                    "API name '{}' not found for service {}",
-                    request.method(), self.service
-                ));
+                return self.send_method_not_found(
+                    thread, msg.thread_trace(), request.method(), sender);
             }
         };
 
@@ -336,19 +369,21 @@ impl Worker {
             );
         }
 
-        let ses = ServerSession::new(
+        let mut ses = ServerSession::new(
             self.client.clone_client(),
             self.cur_thread.as_ref().unwrap(), // required
             msg.thread_trace(),
             sender.clone(),
         );
 
-        if let Err(err) = (method.handler())(self.client.clone(), ses, &request) {
+        if let Err(err) = (method.handler())(self.client.clone(), &mut ses, &request) {
             // TODO reply internal server error
             return Err(format!("{self} method {} failed with {err}", request.method()));
         }
 
-        // TODO send request complete if not already sent via respond_complete
+        if !ses.responded_complete() {
+            ses.send_complete()?;
+        }
 
         Ok(())
     }

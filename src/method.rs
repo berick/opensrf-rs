@@ -4,7 +4,7 @@ use super::message;
 use super::session;
 use super::client;
 
-type MethodHandler = fn(client::ClientHandle, session::ServerSession, &message::Method) -> Result<(), String>;
+type MethodHandler = fn(client::ClientHandle, &mut session::ServerSession, &message::Method) -> Result<(), String>;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ParamCount {

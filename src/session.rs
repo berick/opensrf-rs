@@ -529,6 +529,10 @@ pub struct ServerSession {
     /// Who sent us a request.
     remote_addr: BusAddress,
 
+    /// True if we have already sent a COMPLETE message to the caller.
+    /// Use this to avoid sending replies after a COMPLETE.
+    responded_complete: bool,
+
     /// Most recently used per-thread request id.
     ///
     /// Each new Request within a Session gets a new thread_trace.
@@ -553,49 +557,76 @@ impl ServerSession {
             client,
             remote_addr,
             thread_trace,
+            responded_complete: false,
             thread: thread.to_string(),
         }
+    }
+
+    pub fn responded_complete(&self) -> bool {
+        self.responded_complete
     }
 
     pub fn respond<T>(&self, value: T) -> Result<(), String>
     where
         T: Into<JsonValue>,
     {
-        self.respond_to_client(value, false)
-    }
-
-    pub fn respond_complete<T>(&self, value: T) -> Result<(), String>
-    where
-        T: Into<JsonValue>,
-    {
-        self.respond_to_client(value, true)
-    }
-
-
-    pub fn respond_to_client<T>(&self, value: T, complete: bool) -> Result<(), String>
-    where
-        T: Into<JsonValue>,
-    {
-
-        // TODO move serializer steps into Client for shared use.
         let mut value = json::from(value);
         if let Some(s) = self.client.borrow().serializer() {
             value = s.unpack(&value);
         }
 
-        let stat = match complete {
-            false => MessageStatus::Ok,
-            _ => MessageStatus::Complete
-        };
-
-        let payload = Payload::Result(
-            message::Result::new(stat, "osrfResponse", "OK", value)
-        );
-
         let msg = Message::new(
             MessageType::Result,
             self.thread_trace,
-            payload
+            Payload::Result(
+                message::Result::new(
+                    MessageStatus::Ok, "osrfResponse", "OK", value
+                )
+            )
+        );
+
+        let tmsg = TransportMessage::with_body(
+            self.remote_addr.full(),
+            self.client.borrow().address(),
+            &self.thread,
+            msg
+        );
+
+        let domain = match self.remote_addr.domain() {
+            Some(d) => d,
+            None => {
+                return Err(format!("Cannot respond to address with no domain"));
+            }
+        };
+
+        self.client.borrow_mut().get_domain_bus(domain)?.send(&tmsg)
+    }
+
+    pub fn respond_complete<T>(&mut self, value: T) -> Result<(), String>
+    where
+        T: Into<JsonValue>,
+    {
+        if self.responded_complete {
+            log::warn!(r#"respond_complete() called multiple times for
+                thread {}.  Dropping trailing responses"#, &self.thread);
+            return Ok(())
+        }
+
+        self.respond(value)?;
+        self.send_complete()
+    }
+
+    pub fn send_complete(&mut self) -> Result<(), String> {
+        self.responded_complete = true;
+
+        let msg = Message::new(
+            MessageType::Status,
+            self.thread_trace,
+            Payload::Status(
+                message::Status::new(
+                    MessageStatus::Complete, "osrfStatus", "Complete"
+                )
+            )
         );
 
         let tmsg = TransportMessage::with_body(
