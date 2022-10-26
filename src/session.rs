@@ -392,7 +392,7 @@ impl Session {
 
         self.recv(trace, CONNECT_TIMEOUT)?;
 
-        if self.connected {
+        if self.connected() {
             Ok(())
         } else {
             self.reset();
@@ -570,6 +570,10 @@ impl ServerSession {
         self.last_thread_trace = trace
     }
 
+    pub fn clear_responded_complete(&mut self) {
+        self.responded_complete = false;
+    }
+
     pub fn thread(&self) -> &str {
         &self.thread
     }
@@ -639,8 +643,8 @@ impl ServerSession {
             self.last_thread_trace,
             Payload::Status(message::Status::new(
                 MessageStatus::Complete,
+                "Request Complete",
                 "osrfStatus",
-                "Complete",
             )),
         );
 

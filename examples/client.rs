@@ -7,7 +7,6 @@ const METHOD: &str = "opensrf.rsprivate.echo";
 const DOMAIN: &str = "private.localhost";
 
 fn main() -> Result<(), String> {
-    // TODO wrap al this up a global init()
     let mut conf = Config::from_file("conf/opensrf.yml")?;
 
     let connection = conf.set_primary_connection("service", DOMAIN)?;

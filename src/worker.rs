@@ -35,9 +35,6 @@ pub struct Worker {
     // Keep a local copy for convenience
     service_conf: conf::Service,
 
-    // Thread for our in-progress conversation.
-    cur_thread: Option<String>,
-
     // Currently active session.
     // A worker can only have one active session at a time.
     // For stateless requests, each new thread results in a new session.
@@ -78,7 +75,6 @@ impl Worker {
             client,
             to_parent_tx,
             session: None,
-            cur_thread: None,
             connected: false,
             service_conf: sconf,
             known_methods: HashMap::new(),
@@ -188,13 +184,10 @@ impl Worker {
                             if self.connected {
                                 log::warn!("{selfstr} timeout waiting on request while connected");
                                 self.connected = false;
-
-                                // TODO
-                                /*
-                                let thread = self.cur_thread.as_ref().unwrap_or("no-thread");
-                                self.reply_with_status(thread, 0,
-                                    sender, MessageStatus::Timeout, "Timeout")
-                                */
+                                if let Err(e) =
+                                    self.reply_with_status(MessageStatus::Timeout, "Timeout") {
+                                    log::error!("server: could not reply with Timeout message: {e}");
+                                }
                             }
                         }
 
@@ -256,12 +249,15 @@ impl Worker {
     // Clear our local message bus and reset state maintenance values.
     fn reset(&mut self) -> Result<(), String> {
         self.connected = false;
-        self.cur_thread = None;
+        self.session = None;
         self.client_mut().clear()
     }
 
     fn handle_message(&mut self, msg: &message::Message) -> Result<(), String> {
         self.session_mut().set_last_thread_trace(msg.thread_trace());
+        self.session_mut().clear_responded_complete();
+
+        log::trace!("{self} received message of type {:?}", msg.mtype());
 
         match msg.mtype() {
 
