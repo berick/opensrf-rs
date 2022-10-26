@@ -578,18 +578,19 @@ impl ServerSession {
         let msg = Message::new(
             MessageType::Result,
             self.thread_trace,
-            Payload::Result(
-                message::Result::new(
-                    MessageStatus::Ok, "osrfResponse", "OK", value
-                )
-            )
+            Payload::Result(message::Result::new(
+                MessageStatus::Ok,
+                "osrfResponse",
+                "OK",
+                value,
+            )),
         );
 
         let tmsg = TransportMessage::with_body(
             self.remote_addr.full(),
             self.client.borrow().address(),
             &self.thread,
-            msg
+            msg,
         );
 
         let domain = match self.remote_addr.domain() {
@@ -607,9 +608,12 @@ impl ServerSession {
         T: Into<JsonValue>,
     {
         if self.responded_complete {
-            log::warn!(r#"respond_complete() called multiple times for
-                thread {}.  Dropping trailing responses"#, &self.thread);
-            return Ok(())
+            log::warn!(
+                r#"respond_complete() called multiple times for
+                thread {}.  Dropping trailing responses"#,
+                &self.thread
+            );
+            return Ok(());
         }
 
         self.respond(value)?;
@@ -622,18 +626,18 @@ impl ServerSession {
         let msg = Message::new(
             MessageType::Status,
             self.thread_trace,
-            Payload::Status(
-                message::Status::new(
-                    MessageStatus::Complete, "osrfStatus", "Complete"
-                )
-            )
+            Payload::Status(message::Status::new(
+                MessageStatus::Complete,
+                "osrfStatus",
+                "Complete",
+            )),
         );
 
         let tmsg = TransportMessage::with_body(
             self.remote_addr.full(),
             self.client.borrow().address(),
             &self.thread,
-            msg
+            msg,
         );
 
         let domain = match self.remote_addr.domain() {
@@ -646,5 +650,3 @@ impl ServerSession {
         self.client.borrow_mut().get_domain_bus(domain)?.send(&tmsg)
     }
 }
-
-

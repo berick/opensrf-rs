@@ -1,10 +1,11 @@
-use std::fmt;
-use regex::Regex;
+use super::client;
 use super::message;
 use super::session;
-use super::client;
+use regex::Regex;
+use std::fmt;
 
-type MethodHandler = fn(client::ClientHandle, &mut session::ServerSession, &message::Method) -> Result<(), String>;
+type MethodHandler =
+    fn(client::ClientHandle, &mut session::ServerSession, &message::Method) -> Result<(), String>;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ParamCount {
@@ -18,11 +19,21 @@ pub enum ParamCount {
 impl ParamCount {
     pub fn matches(pc: &ParamCount, count: u8) -> bool {
         match *pc {
-            ParamCount::Any => { return true; }
-            ParamCount::Zero => { return count == 0; }
-            ParamCount::Exactly(c) => { return count == c; }
-            ParamCount::AtLeast(c) => { return count >= c; }
-            ParamCount::Range(s, e) => { return s <= count && e >= count; }
+            ParamCount::Any => {
+                return true;
+            }
+            ParamCount::Zero => {
+                return count == 0;
+            }
+            ParamCount::Exactly(c) => {
+                return count == c;
+            }
+            ParamCount::AtLeast(c) => {
+                return count >= c;
+            }
+            ParamCount::Range(s, e) => {
+                return s <= count && e >= count;
+            }
         }
     }
 }
@@ -43,11 +54,10 @@ pub struct Method {
     /// Regex for matching to incoming API call names
     pub api_spec: &'static str,
     pub param_count: ParamCount,
-    pub handler: MethodHandler
+    pub handler: MethodHandler,
 }
 
 impl Method {
-
     pub fn param_count(&self) -> &ParamCount {
         &self.param_count
     }
@@ -70,7 +80,6 @@ impl Method {
     /// assert_eq!(m.api_name_matches("opensrf.private.kazoo"), false);
     /// ```
     pub fn api_name_matches(&self, api_name: &str) -> bool {
-
         let re = match Regex::new(&self.api_spec) {
             Ok(r) => r,
             Err(e) => {
@@ -87,4 +96,3 @@ impl Method {
         return false;
     }
 }
-

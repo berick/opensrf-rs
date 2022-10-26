@@ -1,21 +1,21 @@
-use super::{Config, Client, Method, ParamCount, ClientHandle};
-use super::session::ServerSession;
-use super::server::{WorkerState, WorkerStateEvent};
+use super::addr::BusAddress;
+use super::conf;
 use super::message;
 use super::message::Message;
 use super::message::MessageStatus;
 use super::message::MessageType;
-use super::message::TransportMessage;
 use super::message::Payload;
-use super::addr::BusAddress;
-use super::conf;
+use super::message::TransportMessage;
+use super::server::{WorkerState, WorkerStateEvent};
+use super::session::ServerSession;
+use super::{Client, ClientHandle, Config, Method, ParamCount};
+use std::cell::RefMut;
+use std::collections::HashMap;
 use std::fmt;
+use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 use std::time;
-use std::sync::mpsc;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::cell::RefMut;
 
 /// A Worker runs in its own thread and responds to API requests.
 pub struct Worker {
@@ -56,16 +56,19 @@ impl fmt::Display for Worker {
 }
 
 impl Worker {
-
     pub fn new(
         service: String,
         worker_id: u64,
         config: Arc<Config>,
         methods: &'static [Method],
-        to_parent_tx: mpsc::SyncSender<WorkerStateEvent>
+        to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) -> Result<Worker, String> {
-
-        let sconf = match config.services().iter().filter(|s| s.name().eq(&service)).next() {
+        let sconf = match config
+            .services()
+            .iter()
+            .filter(|s| s.name().eq(&service))
+            .next()
+        {
             Some(sc) => sc.clone(),
             None => {
                 return Err(format!("No configuration for service {service}"));
@@ -108,7 +111,9 @@ impl Worker {
 
         let mut requests: u32 = 0;
         let max_reqs = self.service_conf().max_requests();
-        let service_addr = BusAddress::new_for_service(&self.service).full().to_string();
+        let service_addr = BusAddress::new_for_service(&self.service)
+            .full()
+            .to_string();
         let local_addr = self.client().address().to_string();
         let keepalive = self.service_conf().keepalive() as i32;
 
@@ -120,7 +125,6 @@ impl Worker {
         }
 
         while requests < max_reqs {
-
             let timeout: i32;
             let sent_to: &str;
 
@@ -131,9 +135,7 @@ impl Worker {
                 // subsequent messages.
                 sent_to = &local_addr;
                 timeout = keepalive;
-
             } else {
-
                 if let Err(e) = self.reset() {
                     log::error!("{selfstr} could not reset {e}.  Exiting");
                     break;
@@ -144,12 +146,15 @@ impl Worker {
                 timeout = -1;
             }
 
-            log::trace!("{selfstr} calling recv() timeout={} sent_to={}", timeout, sent_to);
+            log::trace!(
+                "{selfstr} calling recv() timeout={} sent_to={}",
+                timeout,
+                sent_to
+            );
 
             let recv_op = self.client().bus_mut().recv(timeout, Some(sent_to));
 
             match recv_op {
-
                 Err(e) => {
                     log::error!("{selfstr} recv() in listen produced an error: {e}");
 
@@ -158,12 +163,10 @@ impl Worker {
                     // more easily control-c out of the loop.
                     thread::sleep(time::Duration::from_secs(1));
                     self.connected = false;
-                },
+                }
 
                 Ok(recv_op) => {
-
                     match recv_op {
-
                         None => {
                             // See if the caller failed to send a follow-up
                             // request within the keepalive timeout.
@@ -172,7 +175,7 @@ impl Worker {
                                 self.connected = false;
                                 // TODO send a timeout message
                             }
-                        },
+                        }
 
                         Some(msg) => {
                             if let Err(e) = self.handle_transport_message(&msg) {
@@ -187,7 +190,9 @@ impl Worker {
             // If we are connected, we remain Active and avoid counting
             // subsequent requests within this stateful converstation
             // toward our overall request count.
-            if self.connected { continue; }
+            if self.connected {
+                continue;
+            }
 
             // Some scenarios above (e.g. malformed message) do not result
             // in being in an Active state.
@@ -226,9 +231,13 @@ impl Worker {
         self.client().clear()
     }
 
-    fn handle_message(&mut self, thread: &str, sender: &BusAddress, msg: &message::Message) -> Result<(), String> {
+    fn handle_message(
+        &mut self,
+        thread: &str,
+        sender: &BusAddress,
+        msg: &message::Message,
+    ) -> Result<(), String> {
         match msg.mtype() {
-
             message::MessageType::Disconnect => {
                 log::trace!("{self} received a DISCONNECT");
                 self.reset()?;
@@ -253,25 +262,21 @@ impl Worker {
                 self.handle_request(thread, sender, msg)
             }
 
-            _ => {
-                self.reply_bad_request(sender, msg, "Unexpected message type")
-            }
+            _ => self.reply_bad_request(sender, msg, "Unexpected message type"),
         }
     }
 
-    fn send_connect_ok(&mut self, thread: &str, thread_trace: usize, sender: &BusAddress) -> Result<(), String> {
-        let payload = Payload::Status(
-            message::Status::new(MessageStatus::Ok, "OK", "osrfStatus")
-        );
+    fn send_connect_ok(
+        &mut self,
+        thread: &str,
+        thread_trace: usize,
+        sender: &BusAddress,
+    ) -> Result<(), String> {
+        let payload = Payload::Status(message::Status::new(MessageStatus::Ok, "OK", "osrfStatus"));
 
         let msg = Message::new(MessageType::Status, thread_trace, payload);
 
-        let tmsg = TransportMessage::with_body(
-            sender.full(),
-            self.client().address(),
-            thread,
-            msg
-        );
+        let tmsg = TransportMessage::with_body(sender.full(), self.client().address(), thread, msg);
 
         let domain = match sender.domain().as_ref() {
             Some(d) => d.to_string(),
@@ -280,7 +285,10 @@ impl Worker {
             }
         };
 
-        self.client.client_mut().get_domain_bus(&domain)?.send(&tmsg)
+        self.client
+            .client_mut()
+            .get_domain_bus(&domain)?
+            .send(&tmsg)
     }
 
     fn send_method_not_found(
@@ -288,25 +296,19 @@ impl Worker {
         thread: &str,
         thread_trace: usize,
         method: &str,
-        sender: &BusAddress
+        sender: &BusAddress,
     ) -> Result<(), String> {
-
         log::error!("Method not found: {method}");
 
-        let payload = Payload::Status(
-            message::Status::new(
-                MessageStatus::MethodNotFound, "Method Not Found", "osrfStatus"
-            )
-        );
+        let payload = Payload::Status(message::Status::new(
+            MessageStatus::MethodNotFound,
+            "Method Not Found",
+            "osrfStatus",
+        ));
 
         let msg = Message::new(MessageType::Status, thread_trace, payload);
 
-        let tmsg = TransportMessage::with_body(
-            sender.full(),
-            self.client().address(),
-            thread,
-            msg
-        );
+        let tmsg = TransportMessage::with_body(sender.full(), self.client().address(), thread, msg);
 
         let domain = match sender.domain().as_ref() {
             Some(d) => d.to_string(),
@@ -315,17 +317,22 @@ impl Worker {
             }
         };
 
-        self.client.client_mut().get_domain_bus(&domain)?.send(&tmsg)
+        self.client
+            .client_mut()
+            .get_domain_bus(&domain)?
+            .send(&tmsg)
     }
 
-
-    fn handle_request(&mut self, thread: &str, sender: &BusAddress, msg: &message::Message) -> Result<(), String> {
-
+    fn handle_request(
+        &mut self,
+        thread: &str,
+        sender: &BusAddress,
+        msg: &message::Message,
+    ) -> Result<(), String> {
         let request = match msg.payload() {
             message::Payload::Method(m) => m,
             _ => {
-                return self.reply_bad_request(
-                    sender, msg, "Request sent without payload");
+                return self.reply_bad_request(sender, msg, "Request sent without payload");
             }
         };
 
@@ -334,14 +341,23 @@ impl Worker {
         if !self.marked_active {
             if let Err(e) = self.notify_state(WorkerState::Active) {
                 return Err(format!(
-                    "{self} failed to notify parent of Active state. Exiting. {e}"));
+                    "{self} failed to notify parent of Active state. Exiting. {e}"
+                ));
             }
             self.marked_active = true;
         }
 
         // Log the API call
-        log::debug!("CALL: {} {}", request.method(),
-            request.params().iter().map(|p| p.dump()).collect::<Vec<_>>().join(", "));
+        log::debug!(
+            "CALL: {} {}",
+            request.method(),
+            request
+                .params()
+                .iter()
+                .map(|p| p.dump())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
 
         // Before we begin processing a service-level request, clear our
         // local message bus to avoid encountering any stale messages
@@ -354,18 +370,26 @@ impl Worker {
             Some(m) => m,
             None => {
                 return self.send_method_not_found(
-                    thread, msg.thread_trace(), request.method(), sender);
+                    thread,
+                    msg.thread_trace(),
+                    request.method(),
+                    sender,
+                );
             }
         };
 
         // Make sure the number of params sent by the caller matches the
         // parameter count for the method.
         if !ParamCount::matches(method.param_count(), request.params().len() as u8) {
-            return self.reply_bad_request(sender, msg,
+            return self.reply_bad_request(
+                sender,
+                msg,
                 &format!(
                     "Invalid param count sent: method={} sent={} needed={}",
-                    request.method(), request.params().len(), method.param_count()
-                )
+                    request.method(),
+                    request.params().len(),
+                    method.param_count()
+                ),
             );
         }
 
@@ -378,7 +402,10 @@ impl Worker {
 
         if let Err(err) = (method.handler())(self.client.clone(), &mut ses, &request) {
             // TODO reply internal server error
-            return Err(format!("{self} method {} failed with {err}", request.method()));
+            return Err(format!(
+                "{self} method {} failed with {err}",
+                request.method()
+            ));
         }
 
         if !ses.responded_complete() {
@@ -389,12 +416,10 @@ impl Worker {
     }
 
     fn find_method(&mut self, api_name: &str) -> Option<&'static Method> {
-
         if let Some(m) = self.known_methods.get(api_name) {
             log::trace!("{self} found known good method for {api_name}");
             return Some(*m);
         }
-
 
         // Look for a registered method whose API spec matches the
         // api name for the requested method.
@@ -412,10 +437,12 @@ impl Worker {
         None
     }
 
-
-    fn reply_bad_request(&mut self, sender: &BusAddress,
-        msg: &message::Message, text: &str) -> Result<(), String> {
-
+    fn reply_bad_request(
+        &mut self,
+        sender: &BusAddress,
+        msg: &message::Message,
+        text: &str,
+    ) -> Result<(), String> {
         self.connected = false;
 
         // TODO
@@ -432,16 +459,12 @@ impl Worker {
     }
 
     /// Notify the parent process of this worker's active state.
-    fn notify_state(&self, state: WorkerState) ->
-        Result<(), mpsc::SendError<WorkerStateEvent>> {
-
+    fn notify_state(&self, state: WorkerState) -> Result<(), mpsc::SendError<WorkerStateEvent>> {
         log::trace!("{self} notifying parent of state change => {state:?}");
 
-        self.to_parent_tx.send(
-            WorkerStateEvent {
-                worker_id: self.worker_id(),
-                state: state
-            }
-        )
+        self.to_parent_tx.send(WorkerStateEvent {
+            worker_id: self.worker_id(),
+            state: state,
+        })
     }
 }

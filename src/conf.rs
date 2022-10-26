@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::fs;
 use std::str::FromStr;
+use std::sync::Arc;
 use syslog;
 use yaml_rust::yaml;
 use yaml_rust::YamlLoader;
-use std::sync::Arc;
 
 const DEFAULT_BUS_PORT: u16 = 6379;
 
@@ -165,7 +165,6 @@ pub struct Config {
 }
 
 impl Config {
-
     pub fn to_shared(self) -> Arc<Config> {
         Arc::new(self)
     }
@@ -371,31 +370,27 @@ impl Config {
         Ok(())
     }
 
-
     fn apply_services(&mut self, services: &yaml::Yaml) -> Result<(), String> {
-
         let svc_hash = match services.as_hash() {
             Some(l) => l,
             None => {
                 // Services list is not required
-                return Ok(())
+                return Ok(());
             }
         };
 
         for (name, settings) in svc_hash {
             let workers = &settings["workers"];
-            self.services.push(
-                Service {
-                    name: self.unpack_yaml_string(name)?,
-                    lang: self.get_yaml_string_at(settings, "lang")?.as_str().into(),
-                    keepalive: self.get_yaml_number_at(settings, "keepalive")? as u32,
-                    min_workers: self.get_yaml_number_at(workers, "min")? as u32,
-                    max_workers: self.get_yaml_number_at(workers, "max")? as u32,
-                    min_idle_workers: self.get_yaml_number_at(workers, "min-idle")? as u32,
-                    max_idle_workers: self.get_yaml_number_at(workers, "max-idle")? as u32,
-                    max_requests: self.get_yaml_number_at(workers, "max-requests")? as u32,
-                }
-            );
+            self.services.push(Service {
+                name: self.unpack_yaml_string(name)?,
+                lang: self.get_yaml_string_at(settings, "lang")?.as_str().into(),
+                keepalive: self.get_yaml_number_at(settings, "keepalive")? as u32,
+                min_workers: self.get_yaml_number_at(workers, "min")? as u32,
+                max_workers: self.get_yaml_number_at(workers, "max")? as u32,
+                min_idle_workers: self.get_yaml_number_at(workers, "min-idle")? as u32,
+                max_idle_workers: self.get_yaml_number_at(workers, "max-idle")? as u32,
+                max_requests: self.get_yaml_number_at(workers, "max-requests")? as u32,
+            });
         }
 
         Ok(())

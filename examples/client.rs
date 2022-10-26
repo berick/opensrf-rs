@@ -13,7 +13,9 @@ fn main() -> Result<(), String> {
     let connection = conf.set_primary_connection("service", DOMAIN)?;
 
     let ctype = connection.connection_type();
-    Logger::new(ctype.log_level(), ctype.log_facility()).init().unwrap();
+    Logger::new(ctype.log_level(), ctype.log_facility())
+        .init()
+        .unwrap();
 
     let mut client = Client::new(conf.to_shared())?;
 
@@ -28,7 +30,7 @@ fn main() -> Result<(), String> {
     //let params2 = vec!["whatever", "floats", "boats"];
 
     ses.connect()?; // optional
-    //ses2.connect()?;
+                    //ses2.connect()?;
 
     // Request -> Receive example
     let mut req = ses.request(METHOD, params)?;

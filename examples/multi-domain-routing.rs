@@ -24,7 +24,9 @@ fn main() -> Result<(), String> {
     let connection = conf.set_primary_connection("service", PRIVATE_DOMAIN)?;
 
     let ctype = connection.connection_type();
-    Logger::new(ctype.log_level(), ctype.log_facility()).init().unwrap();
+    Logger::new(ctype.log_level(), ctype.log_facility())
+        .init()
+        .unwrap();
 
     let conf2 = conf.clone();
 

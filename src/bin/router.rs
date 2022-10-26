@@ -617,14 +617,17 @@ fn main() {
     let ctype = config.get_connection_type("router").unwrap();
 
     // Init our global logger instance so we can use, e.g. info!(...)
-    Logger::new(ctype.log_level(), ctype.log_facility()).init().unwrap();
+    Logger::new(ctype.log_level(), ctype.log_facility())
+        .init()
+        .unwrap();
 
     // Each domain gets a router running in its own thread.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
     for domain in config.domains() {
         let mut conf = config.clone();
-        conf.set_primary_connection("router", domain.name()).unwrap();
+        conf.set_primary_connection("router", domain.name())
+            .unwrap();
 
         threads.push(thread::spawn(|| {
             let mut router = Router::new(conf);

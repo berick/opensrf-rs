@@ -1,16 +1,16 @@
-use super::{Method, Config};
-use super::worker::Worker;
-use super::conf;
 use super::client::Client;
 use super::client::ClientHandle;
+use super::conf;
 use super::logging::Logger;
-use std::thread;
-use std::sync::mpsc;
-use std::time::Duration;
-use std::collections::HashMap;
-use std::sync::Arc;
+use super::worker::Worker;
+use super::{Config, Method};
 use signal_hook;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 /// Warn when there are fewer than this many idle threads
 const IDLE_THREAD_WARN_THRESHOLD: usize = 1;
@@ -68,10 +68,12 @@ pub struct Server {
 }
 
 impl Server {
-
-    pub fn new(domain: &str, service: &str, mut config: Config, methods: &'static [Method]) -> Self {
-
-
+    pub fn new(
+        domain: &str,
+        service: &str,
+        mut config: Config,
+        methods: &'static [Method],
+    ) -> Self {
         let sconf = match config.get_service_config(service) {
             Some(c) => c,
             None => panic!("No configuration found for service {}", service),
@@ -79,12 +81,14 @@ impl Server {
 
         let conn = match config.set_primary_connection("service", domain) {
             Ok(c) => c,
-            Err(e) => panic!("Cannot set primary connection for domain {}: {}", domain, e)
+            Err(e) => panic!("Cannot set primary connection for domain {}: {}", domain, e),
         };
 
         let ctype = conn.connection_type();
 
-        Logger::new(ctype.log_level(), ctype.log_facility()).init().unwrap();
+        Logger::new(ctype.log_level(), ctype.log_facility())
+            .init()
+            .unwrap();
 
         let config = config.to_shared();
 
@@ -97,8 +101,10 @@ impl Server {
         // per thread.  Communication from worker threads to the parent
         // are synchronous so the parent always knows exactly how many
         // threads are active.
-        let (tx, rx): (mpsc::SyncSender<WorkerStateEvent>,
-            mpsc::Receiver<WorkerStateEvent>) = mpsc::sync_channel(0);
+        let (tx, rx): (
+            mpsc::SyncSender<WorkerStateEvent>,
+            mpsc::Receiver<WorkerStateEvent>,
+        ) = mpsc::sync_channel(0);
 
         Server {
             service: service.to_string(),
@@ -122,11 +128,15 @@ impl Server {
     //
     // Assumes we have a config for our service and panics if none is found.
     fn service_conf(&self) -> &conf::Service {
-        self.config.services().iter().filter(|s| s.name().eq(&self.service)).next().unwrap()
+        self.config
+            .services()
+            .iter()
+            .filter(|s| s.name().eq(&self.service))
+            .next()
+            .unwrap()
     }
 
     fn spawn_threads(&mut self) {
-
         let min_workers = self.service_conf().min_workers() as usize;
         let mut worker_count = self.workers.len();
 
@@ -146,14 +156,16 @@ impl Server {
         log::trace!("server: spawning a new worker {worker_id}");
 
         let handle = thread::spawn(move || {
-            Server::start_worker_thread(
-                service, worker_id, confref, methods, to_parent_tx);
+            Server::start_worker_thread(service, worker_id, confref, methods, to_parent_tx);
         });
 
-        self.workers.insert(worker_id, WorkerThread {
-            state: WorkerState::Idle,
-            join_handle: handle
-        });
+        self.workers.insert(
+            worker_id,
+            WorkerThread {
+                state: WorkerState::Idle,
+                join_handle: handle,
+            },
+        );
     }
 
     fn start_worker_thread(
@@ -161,8 +173,8 @@ impl Server {
         worker_id: u64,
         config: Arc<Config>,
         methods: &'static [Method],
-        to_parent_tx: mpsc::SyncSender<WorkerStateEvent>) {
-
+        to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
+    ) {
         log::trace!("Creating new worker {worker_id}");
 
         match Worker::new(service, worker_id, config, methods, to_parent_tx) {
@@ -183,8 +195,8 @@ impl Server {
 
     fn register_routers(&mut self) -> Result<(), String> {
         for domain in self.config.domains() {
-            self.client.send_router_command(
-                domain.name(), "register", Some(&self.service), false);
+            self.client
+                .send_router_command(domain.name(), "register", Some(&self.service), false);
         }
         Ok(())
     }
@@ -192,17 +204,19 @@ impl Server {
     fn unregister_routers(&mut self) -> Result<(), String> {
         for domain in self.config.domains() {
             self.client.send_router_command(
-                domain.name(), "unregister", Some(&self.service), false);
+                domain.name(),
+                "unregister",
+                Some(&self.service),
+                false,
+            );
         }
         Ok(())
     }
 
     fn setup_signal_handlers(&self) {
         // If any of these signals occur, our self.stopping flag will be set to true
-        signal_hook::flag::register(
-            signal_hook::consts::SIGTERM, self.stopping.clone());
-        signal_hook::flag::register(
-            signal_hook::consts::SIGINT, self.stopping.clone());
+        signal_hook::flag::register(signal_hook::consts::SIGTERM, self.stopping.clone());
+        signal_hook::flag::register(signal_hook::consts::SIGINT, self.stopping.clone());
     }
 
     pub fn listen(&mut self) {
@@ -212,7 +226,8 @@ impl Server {
 
         let duration = Duration::from_secs(CHECK_COMMANDS_TIMEOUT);
 
-        loop { // Wait for worker thread state updates
+        loop {
+            // Wait for worker thread state updates
 
             log::trace!("server: waiting for worker state updates");
 
@@ -241,7 +256,8 @@ impl Server {
     // Check for threads that panic!ed and were unable to send any
     // worker state info to us.
     fn check_failed_threads(&mut self) {
-        let failed: Vec<u64> = self.workers
+        let failed: Vec<u64> = self
+            .workers
             .iter()
             .filter(|(_, v)| v.join_handle.is_finished())
             .map(|(k, _)| *k) // k is a &u64
@@ -277,7 +293,6 @@ impl Server {
         if evt.state() == WorkerState::Done {
             // Worker is done -- remove it and fire up new ones as needed.
             self.remove_thread(&worker_id);
-
         } else {
             log::trace!("server: updating thread state: {:?}", worker_id);
             worker.state = evt.state();
@@ -288,7 +303,8 @@ impl Server {
 
         log::trace!("server: workers idle={idle} active={active}");
 
-        if idle == 0 { // TODO min idle, etc.
+        if idle == 0 {
+            // TODO min idle, etc.
             if active < self.service_conf().max_workers() as usize {
                 self.spawn_one_thread();
             } else {
@@ -299,16 +315,23 @@ impl Server {
         if idle < IDLE_THREAD_WARN_THRESHOLD {
             log::warn!(
                 "server: idle thread count={} is below warning threshold={}",
-                idle, IDLE_THREAD_WARN_THRESHOLD
+                idle,
+                IDLE_THREAD_WARN_THRESHOLD
             );
         }
     }
 
     fn active_thread_count(&self) -> usize {
-        self.workers.values().filter(|v| v.state == WorkerState::Active).count()
+        self.workers
+            .values()
+            .filter(|v| v.state == WorkerState::Active)
+            .count()
     }
 
     fn idle_thread_count(&self) -> usize {
-        self.workers.values().filter(|v| v.state == WorkerState::Idle).count()
+        self.workers
+            .values()
+            .filter(|v| v.state == WorkerState::Idle)
+            .count()
     }
 }
