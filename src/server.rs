@@ -131,24 +131,29 @@ impl Server {
         let mut worker_count = self.workers.len();
 
         while worker_count < min_workers {
-            let worker_id = self.next_worker_id();
-            let methods = self.methods;
-            let confref = self.config.clone();
-            let to_parent_tx = self.to_parent_tx.clone();
-            let service = self.service.to_string();
-
-            let handle = thread::spawn(move || {
-                Server::start_worker_thread(
-                    service, worker_id, confref, methods, to_parent_tx);
-            });
-
-            self.workers.insert(worker_id, WorkerThread {
-                state: WorkerState::Idle,
-                join_handle: handle
-            });
-
+            self.spawn_one_thread();
             worker_count = self.workers.len();
         }
+    }
+
+    fn spawn_one_thread(&mut self) {
+        let worker_id = self.next_worker_id();
+        let methods = self.methods;
+        let confref = self.config.clone();
+        let to_parent_tx = self.to_parent_tx.clone();
+        let service = self.service.to_string();
+
+        log::trace!("server: spawning a new worker {worker_id}");
+
+        let handle = thread::spawn(move || {
+            Server::start_worker_thread(
+                service, worker_id, confref, methods, to_parent_tx);
+        });
+
+        self.workers.insert(worker_id, WorkerThread {
+            state: WorkerState::Idle,
+            join_handle: handle
+        });
     }
 
     fn start_worker_thread(
@@ -178,14 +183,16 @@ impl Server {
 
     fn register_routers(&mut self) -> Result<(), String> {
         for domain in self.config.domains() {
-            self.client.send_router_command(domain.name(), "register", Some(&self.service), false);
+            self.client.send_router_command(
+                domain.name(), "register", Some(&self.service), false);
         }
         Ok(())
     }
 
     fn unregister_routers(&mut self) -> Result<(), String> {
         for domain in self.config.domains() {
-            self.client.send_router_command(domain.name(), "unregister", Some(&self.service), false);
+            self.client.send_router_command(
+                domain.name(), "unregister", Some(&self.service), false);
         }
         Ok(())
     }
@@ -280,6 +287,14 @@ impl Server {
         let active = self.active_thread_count();
 
         log::trace!("server: workers idle={idle} active={active}");
+
+        if idle == 0 { // TODO min idle, etc.
+            if active < self.service_conf().max_workers() as usize {
+                self.spawn_one_thread();
+            } else {
+                log::warn!("server: reached max workers!");
+            }
+        }
 
         if idle < IDLE_THREAD_WARN_THRESHOLD {
             log::warn!(
