@@ -14,7 +14,7 @@ use std::time::Duration;
 
 /// Warn when there are fewer than this many idle threads
 const IDLE_THREAD_WARN_THRESHOLD: usize = 1;
-const CHECK_COMMANDS_TIMEOUT: u64 = 3;
+const CHECK_COMMANDS_TIMEOUT: u64 = 1;
 
 #[derive(Debug)]
 struct WorkerThread {
@@ -239,8 +239,6 @@ impl Server {
 
         loop {
             // Wait for worker thread state updates
-
-            log::trace!("server: waiting for worker state updates");
 
             // Wait up to 'duration' seconds before looping around and
             // trying again.  This leaves room for other potential

@@ -21,7 +21,7 @@ const METHODS: &'static [method::Method] = &[
     },
     method::Method {
         api_spec: "opensrf.rsprivate.sleep",
-        param_count: method::ParamCount::Exactly(1),
+        param_count: method::ParamCount::Range(0, 1),
         handler: sleep,
     },
 ];
@@ -66,9 +66,12 @@ fn sleep(
     _ses: &mut ServerSession,
     method: &message::Method,
 ) -> Result<(), String> {
-    // We known params contains at least one values because of Server
-    // param count checks.
-    let secs = method.params()[0].as_u8().unwrap_or(1);
+
+    // Param count may be zero
+    let secs = match method.params().len() {
+        x if x > 0 => method.params()[0].as_u8().unwrap_or(1),
+        _ => 1,
+    };
 
     log::debug!("sleep() waiting for {} seconds", secs);
 

@@ -30,7 +30,7 @@ fn main() -> Result<(), String> {
     let params2 = vec!["whatever", "floats", "boats"];
 
     ses.connect()?; // optional
-                    //ses2.connect()?;
+    ses2.connect()?;
 
     // Request -> Receive example
     let mut req = ses.request(METHOD, params)?;
@@ -58,6 +58,17 @@ fn main() -> Result<(), String> {
     for resp in client.sendrecv(SERVICE, METHOD, params)? {
         println!("Response: {}", resp.dump());
     }
+
+    let params: Vec<json::JsonValue> = vec![];
+    for resp in client.sendrecv(SERVICE, "opensrf.rsprivate.time", params)? {
+        println!("TIME IS: {}", resp.dump());
+    }
+
+    let params: Vec<json::JsonValue> = vec![];
+    for resp in client.sendrecv(SERVICE, "opensrf.rsprivate.sleep", params)? {
+        println!("SLEEP SAYS: {}", resp.dump());
+    }
+
 
     Ok(())
 }

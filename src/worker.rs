@@ -26,9 +26,6 @@ pub struct Worker {
     // True if the caller has requested a stateful conversation.
     connected: bool,
 
-    // True if we have informed our parent that we are busy.
-    marked_active: bool,
-
     methods: &'static [Method],
 
     // Method requests that we've seen whose API names match
@@ -75,7 +72,6 @@ impl Worker {
             to_parent_tx,
             cur_thread: None,
             connected: false,
-            marked_active: false,
             service_conf: sconf,
             known_methods: HashMap::new(),
         })
@@ -143,6 +139,11 @@ impl Worker {
 
             let recv_op = self.client().bus_mut().recv(timeout, Some(sent_to));
 
+            if let Err(e) = self.notify_state(WorkerState::Active) {
+                log::error!("{self} failed to notify parent of Active state. Exiting. {e}");
+                break;
+            }
+
             match recv_op {
                 Err(e) => {
                     log::error!("{selfstr} recv() in listen produced an error: {e}");
@@ -183,16 +184,11 @@ impl Worker {
                 continue;
             }
 
-            // Some scenarios above (e.g. malformed message) do not result
-            // in being in an Active state.
-            if self.marked_active {
-                self.marked_active = false;
-                if let Err(_) = self.notify_state(WorkerState::Idle) {
-                    // If we can't notify our parent, it means the parent
-                    // thread is no longer running.  Get outta here.
-                    log::error!("{selfstr} could not notify parent of Idle state. Exiting.");
-                    break;
-                }
+            if let Err(e) = self.notify_state(WorkerState::Idle) {
+                // If we can't notify our parent, it means the parent
+                // thread is no longer running.  Get outta here.
+                log::error!("{selfstr} could not notify parent of Idle state. Exiting. {e}");
+                break;
             }
 
             requests += 1;
@@ -304,23 +300,13 @@ impl Worker {
         sender: &ClientAddress,
         msg: &message::Message,
     ) -> Result<(), String> {
+
         let request = match msg.payload() {
             message::Payload::Method(m) => m,
             _ => {
                 return self.reply_bad_request(thread, sender, msg, "Request sent without payload");
             }
         };
-
-        // We have a well-formed Request message.
-        // Tell the parent we're going to be busy (unless we already have).
-        if !self.marked_active {
-            if let Err(e) = self.notify_state(WorkerState::Active) {
-                return Err(format!(
-                    "{self} failed to notify parent of Active state. Exiting. {e}"
-                ));
-            }
-            self.marked_active = true;
-        }
 
         // Log the API call
         log::debug!(
