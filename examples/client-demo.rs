@@ -1,9 +1,3 @@
-# opensrf-rs
-OpenSRF Rust Bindings
-
-## Synopsis
-
-```rs
 use opensrf::{Client, Config};
 
 const SERVICE: &str = "opensrf.rsprivate";
@@ -55,10 +49,3 @@ fn main() -> Result<(), String> {
 
     Ok(())
 }
-```
-
-## Example
-
-```sh
-RUST_LOG=trace cargo run --example client
-```
