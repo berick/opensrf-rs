@@ -3,7 +3,7 @@ use super::client::ClientHandle;
 use super::conf;
 use super::logging::Logger;
 use super::worker::Worker;
-use super::{Config, Method};
+use super::Method;
 use signal_hook;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -54,7 +54,7 @@ impl WorkerStateEvent {
 }
 
 pub struct Server {
-    config: Arc<Config>,
+    config: Arc<conf::Config>,
     client: ClientHandle,
     service: String,
     methods: &'static [Method],
@@ -71,7 +71,7 @@ impl Server {
     pub fn new(
         domain: &str,
         service: &str,
-        mut config: Config,
+        mut config: conf::Config,
         methods: &'static [Method],
     ) -> Self {
         if config.get_service_config(service).is_none() {
@@ -118,6 +118,10 @@ impl Server {
         }
     }
 
+    fn service(&self) -> &str {
+        &self.service
+    }
+
     fn next_worker_id(&mut self) -> u64 {
         self.worker_id_gen += 1;
         self.worker_id_gen
@@ -130,7 +134,7 @@ impl Server {
         self.config
             .services()
             .iter()
-            .filter(|s| s.name().eq(&self.service))
+            .filter(|s| s.name().eq(self.service()))
             .next()
             .unwrap()
     }
@@ -150,7 +154,7 @@ impl Server {
         let methods = self.methods;
         let confref = self.config.clone();
         let to_parent_tx = self.to_parent_tx.clone();
-        let service = self.service.to_string();
+        let service = self.service().to_string();
 
         log::trace!("server: spawning a new worker {worker_id}");
 
@@ -170,7 +174,7 @@ impl Server {
     fn start_worker_thread(
         service: String,
         worker_id: u64,
-        config: Arc<Config>,
+        config: Arc<conf::Config>,
         methods: &'static [Method],
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) {
@@ -192,12 +196,37 @@ impl Server {
         };
     }
 
-    fn register_routers(&mut self) -> Result<(), String> {
+    /// List of domains that want to host our service
+    fn hosting_domains(&self) -> Vec<&conf::BusDomain> {
+        let mut domains: Vec<&conf::BusDomain> = Vec::new();
         for domain in self.config.domains() {
+            match domain.hosted_services() {
+                Some(services) => {
+                    for svc in services {
+                        if svc.eq(self.service()) {
+                            domains.push(domain);
+                        }
+                    }
+                }
+                None => {
+                    // A domain with no specific set of hosted services
+                    // hosts all services
+                    domains.push(domain);
+                }
+            }
+        }
+
+        domains
+    }
+
+    fn register_routers(&mut self) -> Result<(), String> {
+        for domain in self.hosting_domains() {
+            log::info!("server: registering with router at {}", domain.name());
+
             self.client.send_router_command(
                 domain.name(),
                 "register",
-                Some(&self.service),
+                Some(self.service()),
                 false
             )?;
         }
@@ -205,11 +234,13 @@ impl Server {
     }
 
     fn unregister_routers(&mut self) -> Result<(), String> {
-        for domain in self.config.domains() {
+        for domain in self.hosting_domains() {
+            log::info!("server: un-registering with router at {}", domain.name());
+
             self.client.send_router_command(
                 domain.name(),
                 "unregister",
-                Some(&self.service),
+                Some(self.service()),
                 false,
             )?;
         }

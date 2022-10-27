@@ -499,6 +499,9 @@ impl ResponseIterator {
 }
 
 pub struct ServerSession {
+    /// Service name.
+    service: String,
+
     /// Link to our Client so we can ask it to pull data from the Bus.
     client: Rc<RefCell<Client>>,
 
@@ -521,13 +524,14 @@ pub struct ServerSession {
 
 impl fmt::Display for ServerSession {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ServerSession({})", &self.thread)
+        write!(f, "ServerSession({} {})", self.service(), self.thread())
     }
 }
 
 impl ServerSession {
     pub fn new(
         client: Rc<RefCell<Client>>,
+        service: &str,
         thread: &str,
         last_thread_trace: usize,
         sender: ClientAddress,
@@ -536,6 +540,7 @@ impl ServerSession {
             client,
             sender,
             last_thread_trace,
+            service: service.to_string(),
             responded_complete: false,
             thread: thread.to_string(),
         }
@@ -557,6 +562,10 @@ impl ServerSession {
         &self.thread
     }
 
+    pub fn service(&self) -> &str {
+        &self.service
+    }
+
     pub fn sender(&self) -> &ClientAddress {
         &self.sender
     }
@@ -576,7 +585,7 @@ impl ServerSession {
 
         let msg = Message::new(
             MessageType::Result,
-            self.last_thread_trace,
+            self.last_thread_trace(),
             Payload::Result(message::Result::new(
                 MessageStatus::Ok,
                 "osrfResponse",
@@ -588,7 +597,7 @@ impl ServerSession {
         let tmsg = TransportMessage::with_body(
             self.sender.full(),
             self.client.borrow().address(),
-            &self.thread,
+            self.thread(),
             msg,
         );
 
@@ -605,7 +614,7 @@ impl ServerSession {
             log::warn!(
                 r#"respond_complete() called multiple times for
                 thread {}.  Dropping trailing responses"#,
-                &self.thread
+                self.thread()
             );
             return Ok(());
         }
@@ -622,7 +631,7 @@ impl ServerSession {
 
         let msg = Message::new(
             MessageType::Status,
-            self.last_thread_trace,
+            self.last_thread_trace(),
             Payload::Status(message::Status::new(
                 MessageStatus::Complete,
                 "Request Complete",
@@ -633,7 +642,7 @@ impl ServerSession {
         let tmsg = TransportMessage::with_body(
             self.sender.full(),
             self.client.borrow().address(),
-            &self.thread,
+            self.thread(),
             msg,
         );
 

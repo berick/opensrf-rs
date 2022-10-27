@@ -39,6 +39,9 @@ impl BusDomain {
     pub fn port(&self) -> u16 {
         self.port
     }
+    pub fn hosted_services(&self) -> Option<&Vec<String>> {
+        self.hosted_services.as_ref()
+    }
 }
 
 #[derive(Debug, Clone)]

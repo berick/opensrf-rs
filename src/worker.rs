@@ -230,6 +230,7 @@ impl Worker {
             self.session = Some(
                 ServerSession::new(
                     self.client.clone_client(),
+                    &self.service,
                     tmsg.thread(),
                     0, // thread trace -- updated later as needed
                     ClientAddress::from_string(tmsg.from())?

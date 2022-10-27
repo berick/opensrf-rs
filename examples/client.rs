@@ -2,8 +2,8 @@ use opensrf::Client;
 use opensrf::Config;
 use opensrf::Logger;
 
-const SERVICE: &str = "opensrf.rsprivate";
-const METHOD: &str = "opensrf.rsprivate.echo";
+const SERVICE: &str = "opensrf.rspublic";
+const METHOD: &str = "opensrf.rspublic.echo";
 const DOMAIN: &str = "private.localhost";
 
 fn main() -> Result<(), String> {
@@ -59,13 +59,13 @@ fn main() -> Result<(), String> {
     }
 
     let params: Vec<json::JsonValue> = vec![];
-    for resp in client.sendrecv(SERVICE, "opensrf.rsprivate.time", params)? {
+    for resp in client.sendrecv(SERVICE, "opensrf.rspublic.time", params)? {
         println!("TIME IS: {}", resp.dump());
     }
 
     println!("Sleeping...");
-    let params: Vec<json::JsonValue> = vec![];
-    for resp in client.sendrecv(SERVICE, "opensrf.rsprivate.sleep", params)? {
+    let params: Vec<json::JsonValue> = vec![json::from(2)];
+    for resp in client.sendrecv(SERVICE, "opensrf.rspublic.sleep", params)? {
         println!("SLEEP SAYS: {}", resp.dump());
     }
 

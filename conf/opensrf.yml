@@ -60,7 +60,7 @@ message-bus:
 # Names are free-form and have no meaning outside of this configuration file.
 service-groups:
   public-services:
-    - opensrf.public
+    - opensrf.rspublic
 #    - opensrf.math
 #    - open-ils.actor
 #    - open-ils.acq
