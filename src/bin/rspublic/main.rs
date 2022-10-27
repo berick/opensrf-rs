@@ -28,7 +28,7 @@ fn main() {
     let _args: Vec<String> = env::args().collect(); // TODO config file
 
     let mut server = Server::new(
-        "public.localhost",
+        "private.localhost", // TODO
         "opensrf.rspublic",
         conf::Config::from_file("conf/opensrf.yml").unwrap(),
         METHODS,

@@ -4,7 +4,7 @@ use opensrf::Logger;
 
 const SERVICE: &str = "opensrf.rspublic";
 const METHOD: &str = "opensrf.rspublic.echo";
-const DOMAIN: &str = "private.localhost";
+const DOMAIN: &str = "public.localhost";
 
 fn main() -> Result<(), String> {
     let mut conf = Config::from_file("conf/opensrf.yml")?;
@@ -12,7 +12,7 @@ fn main() -> Result<(), String> {
     let connection = conf.set_primary_connection("service", DOMAIN)?;
 
     let ctype = connection.connection_type();
-    Logger::new(ctype.log_level(), ctype.log_facility())
+    Logger::new("client", ctype.log_level(), ctype.log_facility())
         .init()
         .unwrap();
 
@@ -62,13 +62,6 @@ fn main() -> Result<(), String> {
     for resp in client.sendrecv(SERVICE, "opensrf.rspublic.time", params)? {
         println!("TIME IS: {}", resp.dump());
     }
-
-    println!("Sleeping...");
-    let params: Vec<json::JsonValue> = vec![json::from(2)];
-    for resp in client.sendrecv(SERVICE, "opensrf.rspublic.sleep", params)? {
-        println!("SLEEP SAYS: {}", resp.dump());
-    }
-
 
     Ok(())
 }

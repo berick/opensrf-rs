@@ -301,8 +301,14 @@ impl Bus {
     /// Remove all pending data from the stream while leaving the stream intact.
     pub fn clear_stream(&mut self) -> Result<(), String> {
         let sname = self.address().full().to_string();
+        self.clear_named_stream(&sname)
+    }
+
+    pub fn clear_named_stream(&mut self, stream: &str) -> Result<(), String> {
+        log::trace!("Clearing stream {stream}");
+
         let maxlen = StreamMaxlen::Equals(0);
-        let res: Result<i32, _> = self.connection().xtrim(&sname, maxlen);
+        let res: Result<i32, _> = self.connection().xtrim(stream, maxlen);
 
         if let Err(e) = res {
             return Err(format!("Error in clear_stream(): {e}"));
@@ -314,7 +320,13 @@ impl Bus {
     /// Removes our stream, which also removes our consumer group
     pub fn delete_stream(&mut self) -> Result<(), String> {
         let sname = self.address().full().to_string();
-        let res: Result<i32, _> = self.connection().del(&sname);
+        self.delete_named_stream(&sname)
+    }
+
+    pub fn delete_named_stream(&mut self, stream: &str) -> Result<(), String> {
+        log::debug!("Deleting stream {stream}");
+
+        let res: Result<i32, _> = self.connection().del(stream);
 
         if let Err(e) = res {
             return Err(format!("Error in delete_stream(): {e}"));
@@ -322,6 +334,7 @@ impl Bus {
 
         Ok(())
     }
+
 
     /// Delete our stream.
     ///

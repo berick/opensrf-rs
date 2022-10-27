@@ -85,7 +85,7 @@ impl Server {
 
         let ctype = conn.connection_type();
 
-        Logger::new(ctype.log_level(), ctype.log_facility())
+        Logger::new(service, ctype.log_level(), ctype.log_facility())
             .init()
             .unwrap();
 

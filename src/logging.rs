@@ -3,8 +3,14 @@ use log;
 use std::os::unix::net::UnixDatagram;
 use std::process;
 use syslog;
+use thread_id;
 
 const SYSLOG_UNIX_PATH: &str = "/dev/log";
+
+/// Thread IDs can be many digits, though in practice only the last
+/// few digits vary.  In log messages, include only the final
+/// TRIM_THREAD_ID characters to differentiate threads.
+const TRIM_THREAD_ID: usize = 5;
 
 /// Main logging structure
 ///
@@ -14,16 +20,20 @@ pub struct Logger {
     loglevel: log::LevelFilter,
     facility: syslog::Facility,
     writer: Option<UnixDatagram>,
-    _threads: bool,
+    application: String,
 }
 
 impl Logger {
-    pub fn new(loglevel: log::LevelFilter, facility: syslog::Facility) -> Self {
+    pub fn new(
+        application: &str,
+        loglevel: log::LevelFilter,
+        facility: syslog::Facility,
+    ) -> Self {
         Logger {
             loglevel,
             facility,
-            _threads: false,
             writer: None,
+            application: application.to_string(),
         }
     }
 
@@ -89,9 +99,19 @@ impl log::Log for Logger {
             _ => syslog::Severity::LOG_ERR,
         });
 
+        let tid = thread_id::get().to_string();
+        let len = tid.len();
+        let thread_stub = match len {
+            x if x > TRIM_THREAD_ID => {
+                format!(":{}", tid[(len - TRIM_THREAD_ID)..].to_string())
+            }
+            _ => format!(":{tid}")
+        };
+
         let message = format!(
-            "<{}>[{}:{}:{}:{}] {}",
+            "<{}>{} [{}:{}:{}:{}{}] {}",
             severity,
+            &self.application,
             levelname,
             process::id(),
             target,
@@ -99,6 +119,7 @@ impl log::Log for Logger {
                 Some(l) => l,
                 None => 0,
             },
+            thread_stub,
             record.args()
         );
 

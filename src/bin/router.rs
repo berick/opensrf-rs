@@ -258,6 +258,7 @@ impl Router {
             .bus_mut()
             .expect("Primary domain must have a bus");
 
+        bus.delete_named_stream(sname)?;
         bus.setup_stream(Some(sname))
     }
 
@@ -496,13 +497,16 @@ impl Router {
             trace = tm.body()[0].thread_trace();
         }
 
-        let stat = Message::new(MessageType::Status, trace, payload);
+        let from = match self.primary_domain.bus() {
+            Some(b) => b.address().full(),
+            None => self.listen_address.full()
+        };
 
         let tm = TransportMessage::with_body(
-            tm.from(), // Bounce it back
-            self.listen_address.full(),
+            tm.from(), // Recipient.  Bounce it back.
+            from,
             tm.thread(),
-            stat,
+            Message::new(MessageType::Status, trace, payload)
         );
 
         // Bounce-backs will always be directed back to a client
@@ -616,8 +620,7 @@ fn main() {
     let config = conf::Config::from_file("conf/opensrf.yml").unwrap();
     let ctype = config.get_connection_type("router").unwrap();
 
-    // Init our global logger instance so we can use, e.g. info!(...)
-    Logger::new(ctype.log_level(), ctype.log_facility())
+    Logger::new("router", ctype.log_level(), ctype.log_facility())
         .init()
         .unwrap();
 
