@@ -1,4 +1,4 @@
-use super::addr::{BusAddress, ClientAddress};
+use super::addr::{BusAddress, RouterAddress, ServiceAddress, ClientAddress};
 use super::client::Client;
 use super::message;
 use super::message::Message;
@@ -87,24 +87,18 @@ struct Session {
     connected: bool,
 
     /// Service name.
-    ///
-    /// For Clients, this doubles as the remote_addr when initiating
-    /// a new conversation.
-    /// For Servers, this is the name of the service we host.
     service: String,
 
-    /// Top-level bus address for our service.
-    service_addr: BusAddress,
+    /// Top-level bus address for the service we're making requests of.
+    service_addr: ServiceAddress,
+
+    /// Routed messages go here.
+    router_addr: RouterAddress,
 
     /// Worker-specific bus address for our session.
     ///
-    /// Only set if we are connected directly to a remote worker.
-    remote_addr: Option<BusAddress>,
-
-    /// If enabled, stateless (non-connected) API calls will be delivered
-    /// to the router address on the primary domain instead of directly
-    /// to the target service.
-    multi_domain_support: bool,
+    /// Set any time a response arrives so we know who sent it.
+    worker_addr: Option<ClientAddress>,
 
     /// Most recently used per-thread request id.
     ///
@@ -124,15 +118,16 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    fn new(client: Rc<RefCell<Client>>, service: &str, multi_domain_support: bool) -> Session {
+    fn new(client: Rc<RefCell<Client>>, service: &str) -> Session {
+        let router_addr = RouterAddress::new(client.borrow().domain());
         Session {
             client,
+            router_addr,
             service: String::from(service),
-            remote_addr: None,
-            service_addr: BusAddress::new_for_service(&service),
+            worker_addr: None,
+            service_addr: ServiceAddress::new(&service),
             connected: false,
             last_thread_trace: 0,
-            multi_domain_support,
             backlog: Vec::new(),
             thread: util::random_number(16),
         }
@@ -160,21 +155,31 @@ impl Session {
 
     fn reset(&mut self) {
         trace!("{self} resetting...");
-        self.remote_addr = None;
+        self.worker_addr = None;
         self.connected = false;
         self.backlog.clear();
     }
 
-    /// Returns the address of the remote end if we are connected.  Otherwise,
-    /// returns the default remote address of the service we are talking to.
-    fn remote_addr(&self) -> &BusAddress {
-        if self.connected {
-            if let Some(ref ra) = self.remote_addr {
-                return ra;
-            }
-        }
+    fn router_addr(&self) -> &RouterAddress {
+        &self.router_addr
+    }
 
+    fn worker_addr(&self) -> Option<&ClientAddress> {
+        self.worker_addr.as_ref()
+    }
+
+    fn service_addr(&self) -> &ServiceAddress {
         &self.service_addr
+    }
+
+    /// Returns the underlying address of the remote end if we have
+    /// a remote client address (i.e. we are connected).  Otherwise,
+    /// returns the underlying BusAddress for our service-level address.
+    fn destination_addr(&self) -> &BusAddress {
+        match self.worker_addr() {
+            Some(a) => a.addr(),
+            None => self.service_addr().addr()
+        }
     }
 
     fn recv_from_backlog(&mut self, thread_trace: usize) -> Option<Message> {
@@ -209,23 +214,15 @@ impl Session {
                 return Ok(None);
             }
 
-            let recv_op = self.client_mut().recv_session(&mut timer, self.thread())?;
+            let tmsg = match self.client_mut().recv_session(&mut timer, self.thread())? {
+                Some(m) => m,
+                None => continue // timeout, etc.
+            };
 
-            if recv_op.is_none() {
-                continue;
-            }
-
-            let tmsg = recv_op.unwrap();
+            // Who's talking to us now?
+            self.worker_addr = Some(ClientAddress::from_string(tmsg.from())?);
 
             // Toss the messages onto our backlog as we receive them.
-
-            if self.remote_addr().full() != tmsg.from() {
-                // Response from a specific worker
-                self.remote_addr = Some(BusAddress::new_from_string(tmsg.from())?);
-            }
-
-            trace!("{self} pulled messages from the data bus");
-
             for msg in tmsg.body() {
                 self.backlog.push(msg.to_owned());
             }
@@ -330,32 +327,35 @@ impl Session {
             pvec.push(jv);
         }
 
-        let payload = Payload::Method(Method::new(method, pvec));
-
-        let req = Message::new(MessageType::Request, trace, payload);
-
-        let tm = TransportMessage::with_body(
-            self.remote_addr().full(),
+        let tmsg = TransportMessage::with_body(
+            self.destination_addr().full(),
             self.client().address(),
             self.thread(),
-            req,
+            Message::new(
+                MessageType::Request,
+                trace,
+                Payload::Method(Method::new(method, pvec))
+            )
         );
 
-        if self.multi_domain_support && !self.connected() {
-            // Routed service-level API call
-            let addr = BusAddress::new_for_router(self.client().domain());
+        if !self.connected() {
+            // Top-level API calls always go through the router on
+            // our primary domain.
 
-            debug!("Sending top-level API call to router {}", addr.full());
+            let router_addr = RouterAddress::new(self.client().domain());
+            self.client_mut().bus_mut().send_to(&tmsg, router_addr.full())?;
 
-            self.client_mut().bus_mut().send_to(&tm, addr.full())?;
-        } else if self.remote_addr().is_client() {
-            // Direct communication with a worker
-
-            let domain = self.remote_addr().domain().unwrap();
-            self.client_mut().get_domain_bus(domain)?.send(&tm)?;
         } else {
-            // Service-level API call / non-routed
-            self.client_mut().bus_mut().send(&tm)?;
+
+            if let Some(a) = self.worker_addr() {
+                // Requests directly to client addresses must be routed
+                // to the domain of the client address.
+                self.client_mut().get_domain_bus(a.domain())?.send(&tmsg)?;
+
+            } else {
+                self.reset();
+                return Err(format!("We are connected, but have no worker_addr()"));
+            }
         }
 
         Ok(trace)
@@ -372,27 +372,20 @@ impl Session {
 
         let trace = self.incr_thread_trace();
 
-        let msg = Message::new(MessageType::Connect, trace, Payload::NoPayload);
-
         let tm = TransportMessage::with_body(
-            self.remote_addr().full(),
+            self.destination_addr().full(),
             self.client().address(),
             self.thread(),
-            msg,
+            Message::new(MessageType::Connect, trace, Payload::NoPayload)
         );
 
-        if self.multi_domain_support {
-            // CONNECTs go through the router when available.
-            let addr = BusAddress::new_for_router(self.client().domain());
-            self.client_mut().bus_mut().send_to(&tm, addr.full())?;
-        } else {
-            // Service-level API call / non-routed
-            self.client_mut().bus_mut().send(&tm)?;
-        }
+        // Connect calls always go to our router.
+        self.client_mut().bus_mut().send_to(&tm, self.router_addr().full())?;
 
         self.recv(trace, CONNECT_TIMEOUT)?;
 
         if self.connected() {
+            log::trace!("{self} connected OK");
             Ok(())
         } else {
             self.reset();
@@ -404,36 +397,26 @@ impl Session {
     ///
     /// Does not wait for any response.  NO-OP if not connected.
     fn disconnect(&mut self) -> Result<(), String> {
-        if !self.connected() {
-            // Nothing to disconnect
+
+        if !self.connected() || self.worker_addr().is_none() {
+            self.reset();
             return Ok(());
         }
 
+        let dest_addr = self.worker_addr().unwrap().clone(); // borrows
+
         debug!("{self} sending DISCONNECT");
 
-        let trace = self.incr_thread_trace();
+        let trace = self.incr_thread_trace(); // TODO move into below
 
-        let msg = Message::new(MessageType::Disconnect, trace, Payload::NoPayload);
-
-        let tm = TransportMessage::with_body(
-            self.remote_addr().full(),
+        let tmsg = TransportMessage::with_body(
+            dest_addr.full(),
             self.client().address(),
             self.thread(),
-            msg,
+            Message::new(MessageType::Disconnect, trace, Payload::NoPayload)
         );
 
-        if let Some(domain) = self.remote_addr().domain() {
-            // There should always be a domain in this context
-
-            let mut client = self.client_mut();
-
-            // We may be disconnecting from a remote domain.
-            let bus = client.get_domain_bus(&domain)?;
-
-            bus.send(&tm)?;
-        }
-
-        // Fire and forget.  All done.
+        self.client_mut().get_domain_bus(dest_addr.domain())?.send(&tmsg)?;
 
         self.reset();
 
@@ -447,12 +430,8 @@ pub struct SessionHandle {
 }
 
 impl SessionHandle {
-    pub fn new(
-        client: Rc<RefCell<Client>>,
-        service: &str,
-        multi_domain_support: bool,
-    ) -> SessionHandle {
-        let ses = Session::new(client, service, multi_domain_support);
+    pub fn new(client: Rc<RefCell<Client>>, service: &str) -> SessionHandle {
+        let ses = Session::new(client, service);
 
         trace!("Created new session {ses}");
 
@@ -635,6 +614,9 @@ impl ServerSession {
         self.send_complete()
     }
 
+    /// Send the Request Complete status message to our caller.
+    ///
+    /// This is the same as respond_complete() without a response value.
     pub fn send_complete(&mut self) -> Result<(), String> {
         self.responded_complete = true;
 

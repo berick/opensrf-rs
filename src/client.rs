@@ -1,4 +1,4 @@
-use super::addr::BusAddress;
+use super::addr::RouterAddress;
 use super::session::ResponseIterator;
 use super::session::SessionHandle;
 use super::*;
@@ -180,7 +180,7 @@ impl Client {
         router_class: Option<&str>,
         await_reply: bool,
     ) -> Result<Option<JsonValue>, String> {
-        let addr = BusAddress::new_for_router(domain);
+        let addr = RouterAddress::new(domain);
 
         // Always use the address of our primary Bus
         let mut tmsg = message::TransportMessage::new(
@@ -255,11 +255,7 @@ impl ClientHandle {
 
     /// Create a new client session for the requested service.
     pub fn session(&mut self, service: &str) -> SessionHandle {
-        SessionHandle::new(
-            self.client.clone(),
-            service,
-            self.client.borrow().config.multi_domain_support(),
-        )
+        SessionHandle::new(self.client.clone(), service)
     }
 
     pub fn client_mut(&self) -> RefMut<Client> {

@@ -1,4 +1,4 @@
-use super::addr::{BusAddress, ClientAddress};
+use super::addr::{ServiceAddress, ClientAddress};
 use super::conf;
 use super::message;
 use super::message::Message;
@@ -117,9 +117,7 @@ impl Worker {
 
         let mut requests: u32 = 0;
         let max_reqs = self.service_conf().max_requests();
-        let service_addr = BusAddress::new_for_service(&self.service)
-            .full()
-            .to_string();
+        let service_addr = ServiceAddress::new(&self.service).full().to_string();
         let local_addr = self.client().address().to_string();
         let keepalive = self.service_conf().keepalive() as i32;
 

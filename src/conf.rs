@@ -431,10 +431,6 @@ impl Config {
         })
     }
 
-    pub fn multi_domain_support(&self) -> bool {
-        self.domains.len() > 1
-    }
-
     pub fn get_domain(&self, domain: &str) -> Option<&BusDomain> {
         self.domains.iter().filter(|d| d.name().eq(domain)).next()
     }

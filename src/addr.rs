@@ -40,36 +40,6 @@ impl fmt::Display for BusAddress {
 
 impl BusAddress {
 
-    /// Create a new bus address for a router.
-    pub fn new_for_router(domain: &str) -> Self {
-        let full = format!("{}:router:{}", BUS_ADDR_NAMESPACE, &domain);
-
-        BusAddress {
-            full,
-            namespace: BUS_ADDR_NAMESPACE.to_string(),
-            domain: Some(domain.to_string()),
-            service: None,
-            is_client: false,
-            is_service: false,
-            is_router: true,
-        }
-    }
-
-    /// Create a new bus address for a router.
-    pub fn new_for_service(service: &str) -> Self {
-        let full = format!("{}:service:{}", BUS_ADDR_NAMESPACE, &service);
-
-        BusAddress {
-            full,
-            namespace: BUS_ADDR_NAMESPACE.to_string(),
-            domain: None,
-            service: Some(service.to_string()),
-            is_client: false,
-            is_service: true,
-            is_router: false,
-        }
-    }
-
     /// Creates a new BusAddress from a bus address string.
     pub fn new_from_string(full: &str) -> Result<Self, String> {
         let parts: Vec<&str> = full.split(':').collect();
@@ -197,5 +167,121 @@ impl ClientAddress {
 impl fmt::Display for ClientAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "ClientAddress={}", self.full())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ServiceAddress {
+    addr: BusAddress
+}
+
+impl ServiceAddress {
+
+    pub fn from_addr(addr: BusAddress) -> Result<Self, String> {
+        if addr.is_service() {
+            Ok(ServiceAddress { addr })
+        } else {
+            Err(format!("Cannot create a ServiceAddress from a non-service BusAddress"))
+        }
+    }
+
+    pub fn from_string(full: &str) -> Result<Self, String> {
+        let addr = BusAddress::new_from_string(full)?;
+        if !addr.is_service() {
+            return Err(format!("Invalid ServiceAddress string: {full}"));
+        }
+        Ok(ServiceAddress { addr })
+    }
+
+    pub fn full(&self) -> &str {
+        self.addr.full()
+    }
+
+    pub fn new(service: &str) -> Self {
+        let full = format!("{}:service:{}", BUS_ADDR_NAMESPACE, &service);
+
+        ServiceAddress {
+            addr: BusAddress {
+                full,
+                namespace: BUS_ADDR_NAMESPACE.to_string(),
+                domain: None,
+                service: Some(service.to_string()),
+                is_client: false,
+                is_service: true,
+                is_router: false,
+            }
+        }
+    }
+
+    pub fn addr(&self) -> &BusAddress {
+        &self.addr
+    }
+
+    pub fn service(&self) -> &str {
+        self.addr().service().unwrap()
+    }
+}
+
+impl fmt::Display for ServiceAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ServiceAddress={}", self.full())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RouterAddress {
+    addr: BusAddress
+}
+
+impl RouterAddress {
+
+    pub fn from_addr(addr: BusAddress) -> Result<Self, String> {
+        if addr.is_router() {
+            Ok(RouterAddress { addr })
+        } else {
+            Err(format!("Cannot create a RouterAddress from a non-service BusAddress"))
+        }
+    }
+
+    pub fn from_string(full: &str) -> Result<Self, String> {
+        let addr = BusAddress::new_from_string(full)?;
+        if !addr.is_router() {
+            return Err(format!("Invalid RouterAddress string: {full}"));
+        }
+        Ok(RouterAddress { addr })
+    }
+
+    pub fn full(&self) -> &str {
+        self.addr.full()
+    }
+
+    pub fn new(domain: &str) -> Self {
+        let full = format!("{}:router:{}", BUS_ADDR_NAMESPACE, &domain);
+
+        RouterAddress {
+            addr: BusAddress {
+                full,
+                namespace: BUS_ADDR_NAMESPACE.to_string(),
+                service: None,
+                domain: Some(domain.to_string()),
+                is_client: false,
+                is_service: false,
+                is_router: true,
+            }
+        }
+    }
+
+    pub fn addr(&self) -> &BusAddress {
+        &self.addr
+    }
+
+    pub fn domain(&self) -> &str {
+        self.addr().domain().unwrap()
+    }
+}
+
+impl fmt::Display for RouterAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "RouterAddress={}", self.full())
     }
 }

@@ -1,6 +1,6 @@
 use chrono::prelude::{DateTime, Local};
 use log::{debug, error, info, trace, warn};
-use opensrf::addr::BusAddress;
+use opensrf::addr::{BusAddress, RouterAddress};
 use opensrf::bus::Bus;
 use opensrf::conf;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
@@ -211,7 +211,7 @@ struct Router {
     primary_domain: RouterDomain,
 
     /// Well-known address where top-level API calls should be routed.
-    listen_address: BusAddress,
+    listen_address: RouterAddress,
 
     remote_domains: Vec<RouterDomain>,
 
@@ -222,7 +222,7 @@ impl Router {
     pub fn new(config: conf::Config) -> Self {
         let busconf = config.primary_connection().unwrap();
         let domain = busconf.domain().name();
-        let addr = BusAddress::new_for_router(domain);
+        let addr = RouterAddress::new(domain);
         let primary_domain = RouterDomain::new(&busconf);
 
         Router {

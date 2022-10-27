@@ -63,6 +63,7 @@ fn main() -> Result<(), String> {
         println!("TIME IS: {}", resp.dump());
     }
 
+    println!("Sleeping...");
     let params: Vec<json::JsonValue> = vec![];
     for resp in client.sendrecv(SERVICE, "opensrf.rsprivate.sleep", params)? {
         println!("SLEEP SAYS: {}", resp.dump());
