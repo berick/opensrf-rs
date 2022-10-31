@@ -4,10 +4,10 @@ use super::client;
 use super::conf;
 use super::method;
 
-// ApplicationWorkers may not be thread Send-able, but a ref to a
-// function that generates ApplicationWorkers is.
+/// Function that generates ApplicationWorker implementers.
 pub type ApplicationWorkerFactory = fn() -> Box<dyn ApplicationWorker>;
 
+/// Opaque collection of read-only, thread-Send'able data.
 pub trait ApplicationEnv: Any + Sync + Send {
     fn as_any(&self) -> &dyn Any;
 }
@@ -15,8 +15,7 @@ pub trait ApplicationEnv: Any + Sync + Send {
 pub trait ApplicationWorker: Any {
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
-    /// Client created/connected by the worker thread at thread start
-    /// The thread doesn't need it, so it passes ownership to the worker.
+    /// Passing copies of Server-global environment data to the worker.
     fn absorb_env(
         &mut self,
         client: client::ClientHandle,
@@ -24,8 +23,13 @@ pub trait ApplicationWorker: Any {
         env: Box<dyn ApplicationEnv>
     ) -> Result<(), String>;
 
-    fn thread_start(&mut self) -> Result<(), String>;
-    fn thread_end(&mut self) -> Result<(), String>;
+    /// Called after absorb_env, but before any work occurs.
+    fn worker_start(&mut self) -> Result<(), String>;
+
+    /// Called after all work is done and the thread is going away.
+    ///
+    /// Offers a chance to clean up any resources.
+    fn worker_end(&mut self) -> Result<(), String>;
 }
 
 pub trait Application {
@@ -33,14 +37,23 @@ pub trait Application {
     /// Application service name, e.g. opensrf.settings
     fn name(&self) -> &str;
 
+    /// Tell the server what methods this application implements.
+    ///
+    /// Called before workers are spawned.
     fn register_methods(
         &self,
-        // Client owned by the server
         client: client::ClientHandle,
         config: Arc<conf::Config>,
     ) -> Result<Vec<method::Method>, String>;
 
-    fn worker_factory(&self) -> ApplicationWorkerFactory;
+    /// Returns a function pointer (ApplicationWorkerFactory) that returns
+    /// new ApplicationWorker's when called.
+    ///
+    /// Dynamic trait objects cannot be passed to threads, but functions
+    /// that generate them can.
+    fn worker_factory(&self) -> fn() -> Box<dyn ApplicationWorker>;
+
+    /// Creates a new application environment object.
     fn env(&self) -> Box<dyn ApplicationEnv>;
 }
 

@@ -1,6 +1,7 @@
 use opensrf::Client;
 use opensrf::Config;
 use opensrf::Logger;
+use std::collections::HashMap;
 
 const SERVICE: &str = "opensrf.rspublic";
 const METHOD: &str = "opensrf.rspublic.echo";
@@ -53,14 +54,16 @@ fn main() -> Result<(), String> {
     ses.disconnect()?; // only required if ses.connect() was called
 
     // Iterator example of a one-off request for a service
-    let params = vec!["hello2", "world2", "again"];
-    for resp in client.sendrecv(SERVICE, METHOD, params)? {
-        println!("Response: {}", resp.dump());
-    }
+    let params = vec![
+        json::parse("{\"stuff\":[3, 123, null]}").unwrap(),
+        json::from(HashMap::from([("more stuff", "yep")])),
+        json::JsonValue::Null,
+        json::from(vec![1.1,2.0,3.0]),
+        json::object!{"just fantastic": json::array!["a", "b"]},
+    ];
 
-    let params: Vec<json::JsonValue> = vec![];
-    for resp in client.sendrecv(SERVICE, "opensrf.rspublic.time", params)? {
-        println!("TIME IS: {}", resp.dump());
+    for resp in client.sendrecv(SERVICE, "opensrf.system.echo", params)? {
+        println!("SYSTEM ECHO: {}", resp.dump());
     }
 
     Ok(())

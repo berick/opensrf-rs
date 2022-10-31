@@ -53,7 +53,7 @@ message-bus:
       syslog-facility: local0
     router:
       credentials: private-account
-      loglevel: debug
+      loglevel: trace
       syslog-facility: local2
 
 # Named groups of services.

@@ -127,8 +127,8 @@ impl Worker {
     pub fn listen(&mut self, mut appworker: Box<dyn app::ApplicationWorker>) {
         let selfstr = format!("{self}");
 
-        if let Err(e) = appworker.thread_start() {
-            log::error!("{selfstr} thread_start failed {e}.  Exiting");
+        if let Err(e) = appworker.worker_start() {
+            log::error!("{selfstr} worker_start failed {e}.  Exiting");
             return;
         }
 
@@ -239,8 +239,8 @@ impl Worker {
             log::error!("{self} failed to notify parent of Done state");
         }
 
-        if let Err(e) = appworker.thread_end() {
-            log::error!("{selfstr} thread_start failed {e}.  Exiting");
+        if let Err(e) = appworker.worker_end() {
+            log::error!("{selfstr} worker_start failed {e}.  Exiting");
             return;
         }
     }

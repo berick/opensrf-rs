@@ -12,6 +12,7 @@ use opensrf::app::{ApplicationEnv, Application, ApplicationWorker, ApplicationWo
 
 const APPNAME: &str = "opensrf.rspublic";
 
+/// Clone is needed here to support our implementation of downcast();
 #[derive(Debug, Clone)]
 struct RsPublicEnv;
 
@@ -129,12 +130,12 @@ impl ApplicationWorker for RsPublicWorker {
         Ok(())
     }
 
-    fn thread_start(&mut self) -> Result<(), String> {
+    fn worker_start(&mut self) -> Result<(), String> {
         log::debug!("Thread starting");
         Ok(())
     }
 
-    fn thread_end(&mut self) -> Result<(), String> {
+    fn worker_end(&mut self) -> Result<(), String> {
         log::debug!("Thread ending");
         Ok(())
     }

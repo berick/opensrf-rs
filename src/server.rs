@@ -1,5 +1,7 @@
 use super::client::Client;
 use super::client::ClientHandle;
+use super::message;
+use super::session;
 use super::conf;
 use super::logging::Logger;
 use super::worker::Worker;
@@ -310,8 +312,17 @@ impl Server {
         for m in list {
             hash.insert(m.name().to_string(), m);
         }
+        self.add_system_methods(&mut hash);
         self.methods = Some(Arc::new(hash));
         Ok(())
+    }
+
+    fn add_system_methods(&self, hash: &mut HashMap<String, method::Method>) {
+        let name = "opensrf.system.echo";
+        hash.insert(
+            name.to_string(),
+            method::Method::new(name, method::ParamCount::Any, system_method_echo)
+        );
     }
 
     pub fn listen(&mut self) -> Result<(), String> {
@@ -429,3 +440,17 @@ impl Server {
             .count()
     }
 }
+
+// Toss our system method handlers down here.
+fn system_method_echo(
+    _worker: &mut Box<dyn app::ApplicationWorker>,
+    session: &mut session::ServerSession,
+    method: &message::Method
+) -> Result<(), String> {
+    for p in method.params() {
+        session.respond(p.clone())?;
+    }
+    Ok(())
+}
+
+
