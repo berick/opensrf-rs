@@ -1,11 +1,13 @@
-use super::client;
+use super::app;
 use super::message;
 use super::session;
-use regex::Regex;
 use std::fmt;
 
-type MethodHandler =
-    fn(client::ClientHandle, &mut session::ServerSession, &message::Method) -> Result<(), String>;
+pub type MethodHandler = fn(
+    &mut Box<dyn app::ApplicationWorker>,
+    &mut session::ServerSession,
+    &message::Method
+) -> Result<(), String>;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ParamCount {
@@ -51,13 +53,25 @@ impl fmt::Display for ParamCount {
 }
 
 pub struct Method {
-    /// Regex for matching to incoming API call names
-    pub api_spec: &'static str,
+    pub name: String,
     pub param_count: ParamCount,
     pub handler: MethodHandler,
 }
 
 impl Method {
+
+    pub fn new(
+        name: &str,
+        param_count: ParamCount,
+        handler: MethodHandler
+    ) -> Method {
+        Method {
+            handler,
+            param_count,
+            name: name.to_string(),
+        }
+    }
+
     pub fn param_count(&self) -> &ParamCount {
         &self.param_count
     }
@@ -66,33 +80,7 @@ impl Method {
         self.handler
     }
 
-    /// Returns true if the provided API name matches the api regex for
-    /// this method.
-    ///
-    /// ```
-    /// fn foo() -> Result<(), String> { Ok(()) }
-    ///
-    /// let m = opensrf::Method::new(
-    ///     "opensrf.private.auto", opensrf::ParamCount::Exactly(1), foo).unwrap();
-    ///
-    /// assert!(m.api_name_matches("opensrf.private.auto.kazoo"));
-    ///
-    /// assert_eq!(m.api_name_matches("opensrf.private.kazoo"), false);
-    /// ```
-    pub fn api_name_matches(&self, api_name: &str) -> bool {
-        let re = match Regex::new(&self.api_spec) {
-            Ok(r) => r,
-            Err(e) => {
-                log::error!("Invalid API name spec regex: {e} => {}", &self.api_spec);
-                return false;
-            }
-        };
-
-        if re.is_match(api_name) {
-            log::debug!("Found a method match for {api_name}");
-            return true;
-        }
-
-        return false;
+    pub fn name(&self) -> &str {
+        &self.name
     }
 }

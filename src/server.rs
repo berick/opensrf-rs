@@ -3,7 +3,8 @@ use super::client::ClientHandle;
 use super::conf;
 use super::logging::Logger;
 use super::worker::Worker;
-use super::Method;
+use super::method;
+use super::app;
 use signal_hook;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -54,10 +55,10 @@ impl WorkerStateEvent {
 }
 
 pub struct Server {
+    application: Box<dyn app::Application>,
+    methods: Option<Arc<HashMap<String, method::Method>>>,
     config: Arc<conf::Config>,
     client: ClientHandle,
-    service: String,
-    methods: &'static [Method],
     // Worker threads are tracked via their bus address.
     workers: HashMap<u64, WorkerThread>,
     // Each thread gets a simple numeric ID.
@@ -70,10 +71,12 @@ pub struct Server {
 impl Server {
     pub fn new(
         domain: &str,
-        service: &str,
         mut config: conf::Config,
-        methods: &'static [Method],
+        application: Box<dyn app::Application>,
     ) -> Self {
+
+        let service = application.name();
+
         if config.get_service_config(service).is_none() {
             panic!("No configuration found for service {}", service);
         };
@@ -106,11 +109,11 @@ impl Server {
         ) = mpsc::sync_channel(0);
 
         Server {
-            service: service.to_string(),
             workers: HashMap::new(),
             config,
             client,
-            methods,
+            application,
+            methods: None,
             worker_id_gen: 0,
             to_parent_tx: tx,
             to_parent_rx: rx,
@@ -118,8 +121,20 @@ impl Server {
         }
     }
 
+    fn config(&self) -> &Arc<conf::Config> {
+        &self.config
+    }
+
+    fn app(&self) -> &Box<dyn app::Application> {
+        &self.application
+    }
+
+    fn app_mut(&mut self) -> &mut Box<dyn app::Application> {
+        &mut self.application
+    }
+
     fn service(&self) -> &str {
-        &self.service
+        self.app().name()
     }
 
     fn next_worker_id(&mut self) -> u64 {
@@ -131,7 +146,7 @@ impl Server {
     //
     // Assumes we have a config for our service and panics if none is found.
     fn service_conf(&self) -> &conf::Service {
-        self.config
+        self.config()
             .services()
             .iter()
             .filter(|s| s.name().eq(self.service()))
@@ -151,15 +166,25 @@ impl Server {
 
     fn spawn_one_thread(&mut self) {
         let worker_id = self.next_worker_id();
-        let methods = self.methods;
-        let confref = self.config.clone();
+        let methods = self.methods.as_ref().unwrap().clone();
+        let confref = self.config().clone();
         let to_parent_tx = self.to_parent_tx.clone();
         let service = self.service().to_string();
+        let factory = self.app().worker_factory();
+        let env = self.app().env();
 
         log::trace!("server: spawning a new worker {worker_id}");
 
         let handle = thread::spawn(move || {
-            Server::start_worker_thread(service, worker_id, confref, methods, to_parent_tx);
+            Server::start_worker_thread(
+                env,
+                factory,
+                service,
+                worker_id,
+                confref,
+                methods,
+                to_parent_tx
+            );
         });
 
         self.workers.insert(
@@ -172,19 +197,24 @@ impl Server {
     }
 
     fn start_worker_thread(
+        env: Box<dyn app::ApplicationEnv>,
+        factory: app::ApplicationWorkerFactory,
         service: String,
         worker_id: u64,
         config: Arc<conf::Config>,
-        methods: &'static [Method],
+        methods: Arc<HashMap<String, method::Method>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) {
         log::trace!("Creating new worker {worker_id}");
 
-        match Worker::new(service, worker_id, config, methods, to_parent_tx) {
-            Ok(mut worker) => {
-                log::trace!("Worker {worker_id} going into listen()");
-                worker.listen();
-            }
+        let mut worker = match Worker::new(
+            service,
+            worker_id,
+            config,
+            methods,
+            to_parent_tx
+        ) {
+            Ok(w) => w,
             Err(e) => {
                 log::error!("Cannot create worker: {e}. Exiting.");
 
@@ -192,14 +222,25 @@ impl Server {
                 // will.  Add a sleep here to avoid a storm of new
                 // worker threads spinning up and failing.
                 thread::sleep(Duration::from_secs(5));
+                return;
             }
         };
+
+        log::trace!("Worker {worker_id} going into listen()");
+
+        match worker.create_app_worker(factory, env) {
+            Ok(w) => worker.listen(w),
+            Err(e) => {
+                log::error!("Cannot create app worker: {e}. Exiting.");
+                return;
+            }
+        }
     }
 
     /// List of domains that want to host our service
     fn hosting_domains(&self) -> Vec<&conf::BusDomain> {
         let mut domains: Vec<&conf::BusDomain> = Vec::new();
-        for domain in self.config.domains() {
+        for domain in self.config().domains() {
             match domain.hosted_services() {
                 Some(services) => {
                     for svc in services {
@@ -261,7 +302,20 @@ impl Server {
         Ok(())
     }
 
+    fn register_methods(&mut self) -> Result<(), String> {
+        let client = self.client.clone();
+        let config = self.config().clone();
+        let list = self.app_mut().register_methods(client, config)?;
+        let mut hash: HashMap<String, method::Method> = HashMap::new();
+        for m in list {
+            hash.insert(m.name().to_string(), m);
+        }
+        self.methods = Some(Arc::new(hash));
+        Ok(())
+    }
+
     pub fn listen(&mut self) -> Result<(), String> {
+        self.register_methods()?;
         self.register_routers()?;
         self.spawn_threads();
         self.setup_signal_handlers()?;

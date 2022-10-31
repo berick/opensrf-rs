@@ -1,3 +1,4 @@
+/*
 use opensrf::client::ClientHandle;
 use opensrf::conf;
 use opensrf::message;
@@ -55,4 +56,6 @@ fn relay_request(
 
     Ok(())
 }
+*/
 
+fn main() {}

@@ -1,6 +1,8 @@
 use super::addr::{ServiceAddress, ClientAddress};
+use super::app;
 use super::conf;
 use super::message;
+use super::method;
 use super::message::Message;
 use super::message::MessageStatus;
 use super::message::MessageType;
@@ -8,7 +10,7 @@ use super::message::Payload;
 use super::message::TransportMessage;
 use super::server::{WorkerState, WorkerStateEvent};
 use super::session::ServerSession;
-use super::{Client, ClientHandle, Config, Method, ParamCount};
+use super::{Client, ClientHandle, ParamCount};
 use std::cell::{Ref, RefMut};
 use std::collections::HashMap;
 use std::fmt;
@@ -21,16 +23,14 @@ use std::time;
 pub struct Worker {
     service: String,
 
+    config: Arc<conf::Config>,
+
     client: ClientHandle,
 
     // True if the caller has requested a stateful conversation.
     connected: bool,
 
-    methods: &'static [Method],
-
-    // Method requests that we've seen whose API names match
-    // the name spec of one of our configured methods.
-    known_methods: HashMap<String, &'static Method>,
+    methods: Arc<HashMap<String, method::Method>>,
 
     // Keep a local copy for convenience
     service_conf: conf::Service,
@@ -55,20 +55,23 @@ impl fmt::Display for Worker {
 }
 
 impl Worker {
+
     pub fn new(
         service: String,
         worker_id: u64,
-        config: Arc<Config>,
-        methods: &'static [Method],
+        config: Arc<conf::Config>,
+        methods: Arc<HashMap<String, method::Method>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) -> Result<Worker, String> {
 
         // The presence of a config for our service is confirmed
         // in the Server.
         let sconf = config.get_service_config(&service).unwrap().clone();
+
         let client = Client::new(config.clone())?;
 
         Ok(Worker {
+            config,
             service,
             worker_id,
             methods,
@@ -77,7 +80,6 @@ impl Worker {
             session: None,
             connected: false,
             service_conf: sconf,
-            known_methods: HashMap::new(),
         })
     }
 
@@ -91,7 +93,6 @@ impl Worker {
     fn session_mut(&mut self) -> &mut ServerSession {
         self.session.as_mut().unwrap()
     }
-
 
     // Configuration for the service we are hosting.
     fn service_conf(&self) -> &conf::Service {
@@ -112,8 +113,23 @@ impl Worker {
         self.client.client_mut()
     }
 
-    pub fn listen(&mut self) {
+    pub fn create_app_worker(
+        &mut self,
+        factory: app::ApplicationWorkerFactory,
+        env: Box<dyn app::ApplicationEnv>,
+    ) -> Result<Box<dyn app::ApplicationWorker>, String> {
+        let mut app_worker = (factory)();
+        app_worker.absorb_env(self.client.clone(), self.config.clone(), env)?;
+        Ok(app_worker)
+    }
+
+    pub fn listen(&mut self, mut appworker: Box<dyn app::ApplicationWorker>) {
         let selfstr = format!("{self}");
+
+        if let Err(e) = appworker.thread_start() {
+            log::error!("{selfstr} thread_start failed {e}.  Exiting");
+            return;
+        }
 
         let mut requests: u32 = 0;
         let max_reqs = self.service_conf().max_requests();
@@ -190,7 +206,7 @@ impl Worker {
                         }
 
                         Some(msg) => {
-                            if let Err(e) = self.handle_transport_message(&msg) {
+                            if let Err(e) = self.handle_transport_message(&msg, &mut appworker) {
                                 log::error!("{selfstr} error handling message: {e}");
                                 self.connected = false;
                             }
@@ -221,9 +237,14 @@ impl Worker {
         if let Err(_) = self.notify_state(WorkerState::Done) {
             log::error!("{self} failed to notify parent of Done state");
         }
+
+        if let Err(e) = appworker.thread_end() {
+            log::error!("{selfstr} thread_start failed {e}.  Exiting");
+            return;
+        }
     }
 
-    fn handle_transport_message(&mut self, tmsg: &message::TransportMessage) -> Result<(), String> {
+    fn handle_transport_message(&mut self, tmsg: &message::TransportMessage, appworker: &mut Box<dyn app::ApplicationWorker>) -> Result<(), String> {
 
         if self.session.is_none() || self.session().thread().ne(tmsg.thread()) {
             log::trace!("server: creating new server session for {}", tmsg.thread());
@@ -239,7 +260,7 @@ impl Worker {
         }
 
         for msg in tmsg.body().iter() {
-            self.handle_message(&msg)?;
+            self.handle_message(&msg, appworker)?;
         }
 
         Ok(())
@@ -252,7 +273,7 @@ impl Worker {
         self.client_mut().clear()
     }
 
-    fn handle_message(&mut self, msg: &message::Message) -> Result<(), String> {
+    fn handle_message(&mut self, msg: &message::Message, appworker: &mut Box<dyn app::ApplicationWorker>) -> Result<(), String> {
         self.session_mut().set_last_thread_trace(msg.thread_trace());
         self.session_mut().clear_responded_complete();
 
@@ -279,7 +300,7 @@ impl Worker {
 
             message::MessageType::Request => {
                 log::trace!("{self} received a REQUEST");
-                self.handle_request(msg)
+                self.handle_request(msg, appworker)
             }
 
             _ => self.reply_bad_request("Unexpected message type"),
@@ -314,6 +335,7 @@ impl Worker {
     fn handle_request(
         &mut self,
         msg: &message::Message,
+        appworker: &mut Box<dyn app::ApplicationWorker>,
     ) -> Result<(), String> {
 
         let request = match msg.payload() {
@@ -336,7 +358,7 @@ impl Worker {
             self.client_mut().clear()?;
         }
 
-        let method = match self.find_method(request.method()) {
+        let method = match self.methods.get(request.method()) {
             Some(m) => m,
             None => {
                 return self.reply_with_status(
@@ -346,20 +368,22 @@ impl Worker {
             }
         };
 
+        let pcount = method.param_count().clone();
+
         // Make sure the number of params sent by the caller matches the
         // parameter count for the method.
-        if !ParamCount::matches(method.param_count(), request.params().len() as u8) {
+        if !ParamCount::matches(&pcount, request.params().len() as u8) {
             return self.reply_bad_request(
                 &format!(
                     "Invalid param count sent: method={} sent={} needed={}",
                     request.method(),
                     request.params().len(),
-                    method.param_count()
+                    &pcount,
                 ),
             );
         }
 
-        if let Err(err) = (method.handler())(self.client.clone(), self.session_mut(), &request) {
+        if let Err(err) = (method.handler())(appworker, self.session_mut(), &request) {
             // TODO reply internal server error
             return Err(format!(
                 "{self} method {} failed with {err}",
@@ -374,19 +398,22 @@ impl Worker {
         }
     }
 
-    fn find_method(&mut self, api_name: &str) -> Option<&'static Method> {
+    /*
+    fn find_method(&mut self, name: &str) -> Option<&Method> {
+
         if let Some(m) = self.known_methods.get(api_name) {
             log::trace!("{self} found known good method for {api_name}");
             return Some(*m);
         }
 
+
         // Look for a registered method whose API spec matches the
         // api name for the requested method.
-        for m in self.methods.iter() {
-            if m.api_name_matches(api_name) {
+        for (name, method) in self.methods.enumerate() {
+            if method.api_name_matches(api_name) {
                 // Store the found method under the requested name for
                 // faster lookup on subsequent calls.
-                self.known_methods.insert(api_name.to_string(), &m);
+                //self.known_methods.insert(api_name.to_string(), &m);
                 return Some(&m);
             }
         }
@@ -395,6 +422,7 @@ impl Worker {
 
         None
     }
+    */
 
     fn reply_bad_request(&mut self, text: &str) -> Result<(), String> {
         self.connected = false;

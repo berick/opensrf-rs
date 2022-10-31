@@ -99,27 +99,20 @@ impl log::Log for Logger {
             _ => syslog::Severity::LOG_ERR,
         });
 
-        let tid = thread_id::get().to_string();
-        let len = tid.len();
-        let thread_stub = match len {
-            x if x > TRIM_THREAD_ID => {
-                format!(":{}", tid[(len - TRIM_THREAD_ID)..].to_string())
-            }
-            _ => format!(":{tid}")
-        };
+        let mut tid: String = thread_id::get().to_string();
+        if tid.len() > TRIM_THREAD_ID {
+            tid = tid.chars().skip(tid.len() - TRIM_THREAD_ID).collect();
+        }
 
         let message = format!(
-            "<{}>{} [{}:{}:{}:{}{}] {}",
+            "<{}>{} [{}:{}:{}:{}:{}] {}",
             severity,
             &self.application,
             levelname,
             process::id(),
             target,
-            match record.line() {
-                Some(l) => l,
-                None => 0,
-            },
-            thread_stub,
+            match record.line() { Some(l) => l, _ => 0 },
+            tid,
             record.args()
         );
 

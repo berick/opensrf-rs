@@ -6,6 +6,9 @@ pub use method::Method;
 pub use method::ParamCount;
 pub use server::Server;
 pub use session::SessionHandle;
+pub use app::Application;
+pub use app::ApplicationWorker;
+pub use app::ApplicationEnv;
 
 pub mod addr;
 pub mod bus;
@@ -19,6 +22,7 @@ pub mod server;
 pub mod session;
 pub mod util;
 pub mod worker;
+pub mod app;
 
 #[cfg(test)]
 mod tests;
