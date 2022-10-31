@@ -1,98 +1,111 @@
-use opensrf::app;
+use std::env;
+use std::sync::Arc;
+use std::thread;
+use std::any::Any;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use opensrf::client;
 use opensrf::conf;
 use opensrf::message;
 use opensrf::method;
 use opensrf::server;
-use opensrf::session;
-use std::env;
-use std::sync::Arc;
-use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::any::Any;
+use opensrf::session::ServerSession;
+use opensrf::app::{ApplicationEnv, Application, ApplicationWorker, ApplicationWorkerFactory};
+
+const APPNAME: &str = "opensrf.rsprivate";
 
 #[derive(Debug, Clone)]
-struct RsprivateEnv {
+struct RsPrivateEnv {
     some_global_thing: Arc<String>,
 }
 
-impl RsprivateEnv {
+impl RsPrivateEnv {
     pub fn new(something: Arc<String>) -> Self {
-        RsprivateEnv {
+        RsPrivateEnv {
             some_global_thing: something,
         }
     }
 }
 
-impl app::ApplicationEnv for RsprivateEnv {
+impl ApplicationEnv for RsPrivateEnv {
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 
-struct RsprivateApplication {
-}
+struct RsPrivateApplication;
 
-impl RsprivateApplication {
+impl RsPrivateApplication {
     pub fn new() -> Self {
-        RsprivateApplication {
+        RsPrivateApplication {
         }
     }
 }
 
-impl app::Application for RsprivateApplication {
+impl Application for RsPrivateApplication {
 
     fn name(&self) -> &str {
-        "opensrf.rsprivate"
+        APPNAME
     }
 
-    fn env(&self) -> Box<dyn app::ApplicationEnv> {
-        Box::new(RsprivateEnv::new(Arc::new(String::from("FOO"))))
+    fn env(&self) -> Box<dyn ApplicationEnv> {
+        Box::new(RsPrivateEnv::new(Arc::new(String::from("FOO"))))
     }
 
     fn register_methods(
         &self,
-        client: client::ClientHandle,
+        _client: client::ClientHandle,
         config: Arc<conf::Config>,
     ) -> Result<Vec<method::Method>, String> {
+
+        log::info!("Registering methods with config: {:?}",
+            config.get_service_config(self.name()).unwrap());
+
         Ok(vec![
             method::Method::new("opensrf.rsprivate.time", method::ParamCount::Zero, time),
             method::Method::new("opensrf.rsprivate.echo", method::ParamCount::Any, echo),
+            method::Method::new("opensrf.rsprivate.counter", method::ParamCount::Zero, counter),
+            method::Method::new("opensrf.rsprivate.sleep", method::ParamCount::Range(0, 1), sleep),
         ])
     }
 
-    fn worker_factory(&self) -> app::ApplicationWorkerFactory {
-        || { Box::new(RsprivateWorker::new()) }
+    fn worker_factory(&self) -> ApplicationWorkerFactory {
+        || { Box::new(RsPrivateWorker::new()) }
     }
 }
 
-struct RsprivateWorker {
-    env: Option<RsprivateEnv>,
+struct RsPrivateWorker {
+    env: Option<RsPrivateEnv>,
     client: Option<client::ClientHandle>,
+    config: Option<Arc<conf::Config>>,
+    count: usize,
 }
 
-impl RsprivateWorker {
+impl RsPrivateWorker {
     pub fn new() -> Self {
-        RsprivateWorker {
+        RsPrivateWorker {
             env: None,
-            client: None
+            client: None,
+            config: None,
+            // A value that increases with each call to counter method
+            // to demostrate thread-level state maintenance.
+            count: 0,
         }
     }
 
     /// We must have a value here since absorb_env() is invoked on the worker.
-    pub fn env(&self) -> &RsprivateEnv {
+    pub fn env(&self) -> &RsPrivateEnv {
         self.env.as_ref().unwrap()
     }
 
-    pub fn downcast(w: &mut Box<dyn app::ApplicationWorker>) -> Result<&mut RsprivateWorker, String> {
-        match w.as_any_mut().downcast_mut::<RsprivateWorker>() {
+    pub fn downcast(w: &mut Box<dyn ApplicationWorker>) -> Result<&mut RsPrivateWorker, String> {
+        match w.as_any_mut().downcast_mut::<RsPrivateWorker>() {
             Some(eref) => Ok(eref),
             None => Err(format!("Cannot downcast")),
         }
     }
 }
 
-impl app::ApplicationWorker for RsprivateWorker {
+impl ApplicationWorker for RsPrivateWorker {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -102,10 +115,13 @@ impl app::ApplicationWorker for RsprivateWorker {
         &mut self,
         client: client::ClientHandle,
         config: Arc<conf::Config>,
-        env: Box<dyn app::ApplicationEnv>
+        env: Box<dyn ApplicationEnv>
     ) -> Result<(), String> {
 
-        match env.as_any().downcast_ref::<RsprivateEnv>() {
+        self.client = Some(client);
+        self.config = Some(config);
+
+        match env.as_any().downcast_ref::<RsPrivateEnv>() {
             Some(eref) => { self.env = Some(eref.clone()) }
             None => panic!("Unexpected environment type in absorb_env()")
         }
@@ -127,7 +143,7 @@ impl app::ApplicationWorker for RsprivateWorker {
 fn main() {
     let _args: Vec<String> = env::args().collect(); // TODO config file
 
-    let app = RsprivateApplication::new();
+    let app = RsPrivateApplication::new();
 
     let mut server = server::Server::new(
         "private.localhost", // TODO command line
@@ -138,30 +154,51 @@ fn main() {
     server.listen().unwrap();
 }
 
-fn echo(w: &mut Box<dyn app::ApplicationWorker>, ses: &mut session::ServerSession, method: &message::Method) -> Result<(), String> {
-    let worker = RsprivateWorker::downcast(w)?;
-    log::info!("We have a proper worker with {}", worker.env().some_global_thing);
+fn echo(
+    _worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    method: &message::Method
+) -> Result<(), String> {
     for p in method.params() {
-        ses.respond(p.clone())?;
+        session.respond(p.clone())?;
     }
     Ok(())
 }
 
-fn time(w: &mut Box<dyn app::ApplicationWorker>, ses: &mut session::ServerSession, method: &message::Method) -> Result<(), String> {
-    let worker = RsprivateWorker::downcast(w);
+fn time(
+    _worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    _method: &message::Method
+) -> Result<(), String> {
+
     let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    ses.respond(json::from(dur.as_secs()))?;
+    session.respond(json::from(dur.as_secs()))?;
     Ok(())
 }
 
-/*
+fn counter(
+    worker: &mut Box<dyn ApplicationWorker>,
+    session: &mut ServerSession,
+    _method: &message::Method
+) -> Result<(), String> {
 
-fn sleep(_: ClientHandle, _: &mut ServerSession, method: &message::Method) -> Result<(), String> {
+    let mut worker = RsPrivateWorker::downcast(worker)?;
+    worker.count += 1;
+    log::info!("Here's some data from the environment: {}", worker.env().some_global_thing);
+    session.respond(worker.count)?;
+    Ok(())
+}
+
+fn sleep(
+    _worker: &mut Box<dyn ApplicationWorker>,
+    _session: &mut ServerSession,
+    method: &message::Method
+) -> Result<(), String> {
 
     // Param count may be zero
-    let secs = match method.params().len() {
-        x if x > 0 => method.params()[0].as_u8().unwrap_or(1),
-        _ => 1,
+    let secs = match method.params().get(0) {
+        Some(p) => p.as_u8().unwrap_or(1),
+        _ => 1
     };
 
     log::debug!("sleep() waiting for {} seconds", secs);
@@ -170,5 +207,4 @@ fn sleep(_: ClientHandle, _: &mut ServerSession, method: &message::Method) -> Re
 
     Ok(())
 }
-*/
 

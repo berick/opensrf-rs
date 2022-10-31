@@ -1,7 +1,7 @@
 use opensrf::{Client, Config};
 
-const SERVICE: &str = "opensrf.rsprivate";
-const METHOD: &str = "opensrf.rsprivate.echo";
+const SERVICE: &str = "opensrf.rspublic";
+const METHOD: &str = "opensrf.rspublic.echo";
 
 fn main() -> Result<(), String> {
     let mut conf = Config::from_file("conf/opensrf.yml")?;
@@ -48,6 +48,13 @@ fn main() -> Result<(), String> {
 
     for resp in client.sendrecv(SERVICE, METHOD, params)? {
         println!("Response: {}", resp.dump());
+    }
+
+    for _ in 0..10 {
+        let params: Vec<u8> = vec![];
+        for resp in client.sendrecv(SERVICE, "opensrf.rspublic.counter", params)? {
+            println!("Counter is {}", resp.dump());
+        }
     }
 
     Ok(())
