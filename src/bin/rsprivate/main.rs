@@ -1,15 +1,15 @@
-use std::env;
-use std::sync::Arc;
-use std::thread;
-use std::any::Any;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use opensrf::client;
 use opensrf::conf;
 use opensrf::message;
 use opensrf::method;
 use opensrf::server;
 use opensrf::session::ServerSession;
-use opensrf::app::{ApplicationEnv, Application, ApplicationWorker, ApplicationWorkerFactory};
+use std::any::Any;
+use std::env;
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const APPNAME: &str = "opensrf.rsprivate";
 
@@ -37,13 +37,11 @@ struct RsPrivateApplication;
 
 impl RsPrivateApplication {
     pub fn new() -> Self {
-        RsPrivateApplication {
-        }
+        RsPrivateApplication {}
     }
 }
 
 impl Application for RsPrivateApplication {
-
     fn name(&self) -> &str {
         APPNAME
     }
@@ -57,20 +55,29 @@ impl Application for RsPrivateApplication {
         _client: client::ClientHandle,
         config: Arc<conf::Config>,
     ) -> Result<Vec<method::Method>, String> {
-
-        log::info!("Registering methods with config: {:?}",
-            config.get_service_config(self.name()).unwrap());
+        log::info!(
+            "Registering methods with config: {:?}",
+            config.get_service_config(self.name()).unwrap()
+        );
 
         Ok(vec![
             method::Method::new("opensrf.rsprivate.time", method::ParamCount::Zero, time),
             method::Method::new("opensrf.rsprivate.echo", method::ParamCount::Any, echo),
-            method::Method::new("opensrf.rsprivate.counter", method::ParamCount::Zero, counter),
-            method::Method::new("opensrf.rsprivate.sleep", method::ParamCount::Range(0, 1), sleep),
+            method::Method::new(
+                "opensrf.rsprivate.counter",
+                method::ParamCount::Zero,
+                counter,
+            ),
+            method::Method::new(
+                "opensrf.rsprivate.sleep",
+                method::ParamCount::Range(0, 1),
+                sleep,
+            ),
         ])
     }
 
     fn worker_factory(&self) -> ApplicationWorkerFactory {
-        || { Box::new(RsPrivateWorker::new()) }
+        || Box::new(RsPrivateWorker::new())
     }
 }
 
@@ -116,15 +123,14 @@ impl ApplicationWorker for RsPrivateWorker {
         &mut self,
         client: client::ClientHandle,
         config: Arc<conf::Config>,
-        env: Box<dyn ApplicationEnv>
+        env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {
-
         self.client = Some(client);
         self.config = Some(config);
 
         match env.as_any().downcast_ref::<RsPrivateEnv>() {
-            Some(eref) => { self.env = Some(eref.clone()) }
-            None => panic!("Unexpected environment type in absorb_env()")
+            Some(eref) => self.env = Some(eref.clone()),
+            None => panic!("Unexpected environment type in absorb_env()"),
         }
         Ok(())
     }
@@ -140,7 +146,6 @@ impl ApplicationWorker for RsPrivateWorker {
     }
 }
 
-
 fn main() {
     let _args: Vec<String> = env::args().collect(); // TODO config file
 
@@ -149,7 +154,7 @@ fn main() {
     let mut server = server::Server::new(
         "private.localhost", // TODO command line
         conf::Config::from_file("conf/opensrf.yml").unwrap(),
-        Box::new(app)
+        Box::new(app),
     );
 
     server.listen().unwrap();
@@ -158,7 +163,7 @@ fn main() {
 fn echo(
     _worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method
+    method: &message::Method,
 ) -> Result<(), String> {
     for p in method.params() {
         session.respond(p.clone())?;
@@ -169,9 +174,8 @@ fn echo(
 fn time(
     _worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    _method: &message::Method
+    _method: &message::Method,
 ) -> Result<(), String> {
-
     let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     session.respond(json::from(dur.as_secs()))?;
     Ok(())
@@ -180,12 +184,14 @@ fn time(
 fn counter(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    _method: &message::Method
+    _method: &message::Method,
 ) -> Result<(), String> {
-
     let mut worker = RsPrivateWorker::downcast(worker)?;
     worker.count += 1;
-    log::info!("Here's some data from the environment: {}", worker.env().some_global_thing);
+    log::info!(
+        "Here's some data from the environment: {}",
+        worker.env().some_global_thing
+    );
     session.respond(worker.count)?;
     Ok(())
 }
@@ -193,13 +199,12 @@ fn counter(
 fn sleep(
     _worker: &mut Box<dyn ApplicationWorker>,
     _session: &mut ServerSession,
-    method: &message::Method
+    method: &message::Method,
 ) -> Result<(), String> {
-
     // Param count may be zero
     let secs = match method.params().get(0) {
         Some(p) => p.as_u8().unwrap_or(1),
-        _ => 1
+        _ => 1,
     };
 
     log::debug!("sleep() waiting for {} seconds", secs);
@@ -208,4 +213,3 @@ fn sleep(
 
     Ok(())
 }
-

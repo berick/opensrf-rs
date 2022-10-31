@@ -1,6 +1,4 @@
-use std::env;
-use std::sync::Arc;
-use std::any::Any;
+use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use opensrf::client::ClientHandle;
 use opensrf::conf;
 use opensrf::message;
@@ -8,7 +6,9 @@ use opensrf::method;
 use opensrf::method::ParamCount;
 use opensrf::server;
 use opensrf::session::ServerSession;
-use opensrf::app::{ApplicationEnv, Application, ApplicationWorker, ApplicationWorkerFactory};
+use std::any::Any;
+use std::env;
+use std::sync::Arc;
 
 const APPNAME: &str = "opensrf.rspublic";
 
@@ -18,7 +18,7 @@ struct RsPublicEnv;
 
 impl RsPublicEnv {
     pub fn new() -> Self {
-        RsPublicEnv { }
+        RsPublicEnv {}
     }
 }
 
@@ -32,13 +32,11 @@ struct RsPublicApplication;
 
 impl RsPublicApplication {
     pub fn new() -> Self {
-        RsPublicApplication {
-        }
+        RsPublicApplication {}
     }
 }
 
 impl Application for RsPublicApplication {
-
     fn name(&self) -> &str {
         APPNAME
     }
@@ -52,7 +50,6 @@ impl Application for RsPublicApplication {
         _client: ClientHandle,
         _config: Arc<conf::Config>,
     ) -> Result<Vec<method::Method>, String> {
-
         Ok(vec![
             method::Method::new("opensrf.rspublic.time", ParamCount::Zero, relay),
             method::Method::new("opensrf.rspublic.echo", ParamCount::Any, relay),
@@ -62,7 +59,7 @@ impl Application for RsPublicApplication {
     }
 
     fn worker_factory(&self) -> ApplicationWorkerFactory {
-        || { Box::new(RsPublicWorker::new()) }
+        || Box::new(RsPublicWorker::new())
     }
 }
 
@@ -117,15 +114,14 @@ impl ApplicationWorker for RsPublicWorker {
         &mut self,
         client: ClientHandle,
         config: Arc<conf::Config>,
-        env: Box<dyn ApplicationEnv>
+        env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {
-
         self.client = Some(client);
         self.config = Some(config);
 
         match env.as_any().downcast_ref::<RsPublicEnv>() {
-            Some(eref) => { self.env = Some(eref.clone()) }
-            None => panic!("Unexpected environment type in absorb_env()")
+            Some(eref) => self.env = Some(eref.clone()),
+            None => panic!("Unexpected environment type in absorb_env()"),
         }
         Ok(())
     }
@@ -141,7 +137,6 @@ impl ApplicationWorker for RsPublicWorker {
     }
 }
 
-
 fn main() {
     let _args: Vec<String> = env::args().collect(); // TODO config file
 
@@ -150,7 +145,7 @@ fn main() {
     let mut server = server::Server::new(
         "private.localhost", // TODO command line
         conf::Config::from_file("conf/opensrf.yml").unwrap(),
-        Box::new(app)
+        Box::new(app),
     );
 
     server.listen().unwrap();
@@ -159,20 +154,20 @@ fn main() {
 fn relay(
     worker: &mut Box<dyn ApplicationWorker>,
     session: &mut ServerSession,
-    method: &message::Method
+    method: &message::Method,
 ) -> Result<(), String> {
-
     let mut worker = RsPublicWorker::downcast(worker)?;
     worker.relay_count += 1;
     let api_name = method.method().replace("rspublic", "rsprivate");
 
-    for resp in worker.client_mut().sendrecv(
-        "opensrf.rsprivate", &api_name, method.params().clone())? {
-
+    for resp in
+        worker
+            .client_mut()
+            .sendrecv("opensrf.rsprivate", &api_name, method.params().clone())?
+    {
         session.respond(resp.clone())?;
         session.respond(json::from(format!("Relay count: {}", worker.relay_count)))?
     }
 
     Ok(())
 }
-

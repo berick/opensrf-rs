@@ -1,4 +1,4 @@
-use super::addr::{BusAddress, RouterAddress, ServiceAddress, ClientAddress};
+use super::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use super::client::Client;
 use super::message;
 use super::message::Message;
@@ -178,7 +178,7 @@ impl Session {
     fn destination_addr(&self) -> &BusAddress {
         match self.worker_addr() {
             Some(a) => a.addr(),
-            None => self.service_addr().addr()
+            None => self.service_addr().addr(),
         }
     }
 
@@ -216,7 +216,7 @@ impl Session {
 
             let tmsg = match self.client_mut().recv_session(&mut timer, self.thread())? {
                 Some(m) => m,
-                None => continue // timeout, etc.
+                None => continue, // timeout, etc.
             };
 
             // Who's talking to us now?
@@ -334,8 +334,8 @@ impl Session {
             Message::new(
                 MessageType::Request,
                 trace,
-                Payload::Method(Method::new(method, pvec))
-            )
+                Payload::Method(Method::new(method, pvec)),
+            ),
         );
 
         if !self.connected() {
@@ -343,15 +343,14 @@ impl Session {
             // our primary domain.
 
             let router_addr = RouterAddress::new(self.client().domain());
-            self.client_mut().bus_mut().send_to(&tmsg, router_addr.full())?;
-
+            self.client_mut()
+                .bus_mut()
+                .send_to(&tmsg, router_addr.full())?;
         } else {
-
             if let Some(a) = self.worker_addr() {
                 // Requests directly to client addresses must be routed
                 // to the domain of the client address.
                 self.client_mut().get_domain_bus(a.domain())?.send(&tmsg)?;
-
             } else {
                 self.reset();
                 return Err(format!("We are connected, but have no worker_addr()"));
@@ -376,11 +375,13 @@ impl Session {
             self.destination_addr().full(),
             self.client().address(),
             self.thread(),
-            Message::new(MessageType::Connect, trace, Payload::NoPayload)
+            Message::new(MessageType::Connect, trace, Payload::NoPayload),
         );
 
         // Connect calls always go to our router.
-        self.client_mut().bus_mut().send_to(&tm, self.router_addr().full())?;
+        self.client_mut()
+            .bus_mut()
+            .send_to(&tm, self.router_addr().full())?;
 
         self.recv(trace, CONNECT_TIMEOUT)?;
 
@@ -397,7 +398,6 @@ impl Session {
     ///
     /// Does not wait for any response.  NO-OP if not connected.
     fn disconnect(&mut self) -> Result<(), String> {
-
         if !self.connected() || self.worker_addr().is_none() {
             self.reset();
             return Ok(());
@@ -413,10 +413,12 @@ impl Session {
             dest_addr.full(),
             self.client().address(),
             self.thread(),
-            Message::new(MessageType::Disconnect, trace, Payload::NoPayload)
+            Message::new(MessageType::Disconnect, trace, Payload::NoPayload),
         );
 
-        self.client_mut().get_domain_bus(dest_addr.domain())?.send(&tmsg)?;
+        self.client_mut()
+            .get_domain_bus(dest_addr.domain())?
+            .send(&tmsg)?;
 
         self.reset();
 

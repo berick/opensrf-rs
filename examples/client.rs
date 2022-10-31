@@ -58,8 +58,8 @@ fn main() -> Result<(), String> {
         json::parse("{\"stuff\":[3, 123, null]}").unwrap(),
         json::from(HashMap::from([("more stuff", "yep")])),
         json::JsonValue::Null,
-        json::from(vec![1.1,2.0,3.0]),
-        json::object!{"just fantastic": json::array!["a", "b"]},
+        json::from(vec![1.1, 2.0, 3.0]),
+        json::object! {"just fantastic": json::array!["a", "b"]},
     ];
 
     for resp in client.sendrecv(SERVICE, "opensrf.system.echo", params)? {

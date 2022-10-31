@@ -1,17 +1,17 @@
-use super::addr::{ServiceAddress, ClientAddress};
+use super::addr::{ClientAddress, ServiceAddress};
 use super::app;
+use super::client::{Client, ClientHandle};
 use super::conf;
 use super::message;
-use super::method;
 use super::message::Message;
 use super::message::MessageStatus;
 use super::message::MessageType;
 use super::message::Payload;
 use super::message::TransportMessage;
+use super::method;
+use super::method::ParamCount;
 use super::server::{WorkerState, WorkerStateEvent};
 use super::session::ServerSession;
-use super::method::ParamCount;
-use super::client::{Client, ClientHandle};
 use std::cell::{Ref, RefMut};
 use std::collections::HashMap;
 use std::fmt;
@@ -56,7 +56,6 @@ impl fmt::Display for Worker {
 }
 
 impl Worker {
-
     pub fn new(
         service: String,
         worker_id: u64,
@@ -64,7 +63,6 @@ impl Worker {
         methods: Arc<HashMap<String, method::Method>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) -> Result<Worker, String> {
-
         // The presence of a config for our service is confirmed
         // in the Server.
         let sconf = config.get_service_config(&service).unwrap().clone();
@@ -140,7 +138,11 @@ impl Worker {
 
         // Setup the stream for our service.  This is the top-level
         // service address where new requests arrive.
-        if let Err(e) = self.client_mut().bus_mut().setup_stream(Some(&service_addr)) {
+        if let Err(e) = self
+            .client_mut()
+            .bus_mut()
+            .setup_stream(Some(&service_addr))
+        {
             log::error!("{selfstr} cannot setup service stream at {service_addr}: {e}");
             return;
         }
@@ -200,8 +202,11 @@ impl Worker {
                                 log::warn!("{selfstr} timeout waiting on request while connected");
                                 self.connected = false;
                                 if let Err(e) =
-                                    self.reply_with_status(MessageStatus::Timeout, "Timeout") {
-                                    log::error!("server: could not reply with Timeout message: {e}");
+                                    self.reply_with_status(MessageStatus::Timeout, "Timeout")
+                                {
+                                    log::error!(
+                                        "server: could not reply with Timeout message: {e}"
+                                    );
                                 }
                             }
                         }
@@ -245,19 +250,20 @@ impl Worker {
         }
     }
 
-    fn handle_transport_message(&mut self, tmsg: &message::TransportMessage, appworker: &mut Box<dyn app::ApplicationWorker>) -> Result<(), String> {
-
+    fn handle_transport_message(
+        &mut self,
+        tmsg: &message::TransportMessage,
+        appworker: &mut Box<dyn app::ApplicationWorker>,
+    ) -> Result<(), String> {
         if self.session.is_none() || self.session().thread().ne(tmsg.thread()) {
             log::trace!("server: creating new server session for {}", tmsg.thread());
-            self.session = Some(
-                ServerSession::new(
-                    self.client.clone_client(),
-                    &self.service,
-                    tmsg.thread(),
-                    0, // thread trace -- updated later as needed
-                    ClientAddress::from_string(tmsg.from())?
-                )
-            );
+            self.session = Some(ServerSession::new(
+                self.client.clone_client(),
+                &self.service,
+                tmsg.thread(),
+                0, // thread trace -- updated later as needed
+                ClientAddress::from_string(tmsg.from())?,
+            ));
         }
 
         for msg in tmsg.body().iter() {
@@ -274,14 +280,17 @@ impl Worker {
         self.client_mut().clear()
     }
 
-    fn handle_message(&mut self, msg: &message::Message, appworker: &mut Box<dyn app::ApplicationWorker>) -> Result<(), String> {
+    fn handle_message(
+        &mut self,
+        msg: &message::Message,
+        appworker: &mut Box<dyn app::ApplicationWorker>,
+    ) -> Result<(), String> {
         self.session_mut().set_last_thread_trace(msg.thread_trace());
         self.session_mut().clear_responded_complete();
 
         log::trace!("{self} received message of type {:?}", msg.mtype());
 
         match msg.mtype() {
-
             message::MessageType::Disconnect => {
                 log::trace!("{self} received a DISCONNECT");
                 self.reset()?;
@@ -308,12 +317,7 @@ impl Worker {
         }
     }
 
-    fn reply_with_status(
-        &mut self,
-        stat: MessageStatus,
-        stat_text: &str
-    ) -> Result<(), String> {
-
+    fn reply_with_status(&mut self, stat: MessageStatus, stat_text: &str) -> Result<(), String> {
         let tmsg = TransportMessage::with_body(
             self.session().sender().full(),
             self.client().address(),
@@ -321,10 +325,8 @@ impl Worker {
             Message::new(
                 MessageType::Status,
                 self.session().last_thread_trace(),
-                Payload::Status(
-                    message::Status::new(stat, stat_text, "osrfStatus")
-                )
-            )
+                Payload::Status(message::Status::new(stat, stat_text, "osrfStatus")),
+            ),
         );
 
         self.client
@@ -338,7 +340,6 @@ impl Worker {
         msg: &message::Message,
         appworker: &mut Box<dyn app::ApplicationWorker>,
     ) -> Result<(), String> {
-
         let request = match msg.payload() {
             message::Payload::Method(m) => m,
             _ => {
@@ -346,8 +347,12 @@ impl Worker {
             }
         };
 
-        let logp =
-            request.params().iter().map(|p| p.dump()).collect::<Vec<_>>().join(", ");
+        let logp = request
+            .params()
+            .iter()
+            .map(|p| p.dump())
+            .collect::<Vec<_>>()
+            .join(", ");
 
         // Log the API call
         log::debug!("CALL: {} {}", request.method(), logp);
@@ -364,7 +369,7 @@ impl Worker {
             None => {
                 return self.reply_with_status(
                     MessageStatus::MethodNotFound,
-                    &format!("Method not found: {}", request.method())
+                    &format!("Method not found: {}", request.method()),
                 );
             }
         };
@@ -374,14 +379,12 @@ impl Worker {
         // Make sure the number of params sent by the caller matches the
         // parameter count for the method.
         if !ParamCount::matches(&pcount, request.params().len() as u8) {
-            return self.reply_bad_request(
-                &format!(
-                    "Invalid param count sent: method={} sent={} needed={}",
-                    request.method(),
-                    request.params().len(),
-                    &pcount,
-                ),
-            );
+            return self.reply_bad_request(&format!(
+                "Invalid param count sent: method={} sent={} needed={}",
+                request.method(),
+                request.params().len(),
+                &pcount,
+            ));
         }
 
         if let Err(err) = (method.handler())(appworker, self.session_mut(), &request) {
@@ -435,14 +438,12 @@ impl Worker {
             Message::new(
                 MessageType::Status,
                 self.session().last_thread_trace(),
-                Payload::Status(
-                    message::Status::new(
-                        MessageStatus::BadRequest,
-                        &format!("Bad Request: {text}"),
-                        "osrfStatus"
-                    )
-                )
-            )
+                Payload::Status(message::Status::new(
+                    MessageStatus::BadRequest,
+                    &format!("Bad Request: {text}"),
+                    "osrfStatus",
+                )),
+            ),
         );
 
         self.client

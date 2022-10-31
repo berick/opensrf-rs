@@ -335,7 +335,6 @@ impl Bus {
         Ok(())
     }
 
-
     /// Delete our stream.
     ///
     /// Redis connectionts are closed on free, so no specific

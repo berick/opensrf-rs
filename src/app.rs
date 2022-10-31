@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use std::any::Any;
 use super::client;
 use super::conf;
 use super::method;
+use std::any::Any;
+use std::sync::Arc;
 
 /// Function that generates ApplicationWorker implementers.
 pub type ApplicationWorkerFactory = fn() -> Box<dyn ApplicationWorker>;
@@ -20,7 +20,7 @@ pub trait ApplicationWorker: Any {
         &mut self,
         client: client::ClientHandle,
         config: Arc<conf::Config>,
-        env: Box<dyn ApplicationEnv>
+        env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String>;
 
     /// Called after absorb_env, but before any work occurs.
@@ -33,7 +33,6 @@ pub trait ApplicationWorker: Any {
 }
 
 pub trait Application {
-
     /// Application service name, e.g. opensrf.settings
     fn name(&self) -> &str;
 
@@ -56,5 +55,3 @@ pub trait Application {
     /// Creates a new application environment object.
     fn env(&self) -> Box<dyn ApplicationEnv>;
 }
-
-

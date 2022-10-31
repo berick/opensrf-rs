@@ -5,6 +5,7 @@ pub use logging::Logger;
 pub use session::SessionHandle;
 
 pub mod addr;
+pub mod app;
 pub mod bus;
 pub mod classified;
 pub mod client;
@@ -16,7 +17,6 @@ pub mod server;
 pub mod session;
 pub mod util;
 pub mod worker;
-pub mod app;
 
 #[cfg(test)]
 mod tests;

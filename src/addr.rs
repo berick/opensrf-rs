@@ -39,7 +39,6 @@ impl fmt::Display for BusAddress {
 }
 
 impl BusAddress {
-
     /// Creates a new BusAddress from a bus address string.
     pub fn new_from_string(full: &str) -> Result<Self, String> {
         let parts: Vec<&str> = full.split(':').collect();
@@ -107,16 +106,17 @@ impl BusAddress {
 
 #[derive(Debug, Clone)]
 pub struct ClientAddress {
-    addr: BusAddress
+    addr: BusAddress,
 }
 
 impl ClientAddress {
-
     pub fn from_addr(addr: BusAddress) -> Result<Self, String> {
         if addr.is_client() {
             Ok(ClientAddress { addr })
         } else {
-            Err(format!("Cannot create a ClientAddress from a non-client BusAddress"))
+            Err(format!(
+                "Cannot create a ClientAddress from a non-client BusAddress"
+            ))
         }
     }
 
@@ -151,7 +151,7 @@ impl ClientAddress {
                 is_client: true,
                 is_service: false,
                 is_router: false,
-            }
+            },
         }
     }
 
@@ -172,16 +172,17 @@ impl fmt::Display for ClientAddress {
 
 #[derive(Debug, Clone)]
 pub struct ServiceAddress {
-    addr: BusAddress
+    addr: BusAddress,
 }
 
 impl ServiceAddress {
-
     pub fn from_addr(addr: BusAddress) -> Result<Self, String> {
         if addr.is_service() {
             Ok(ServiceAddress { addr })
         } else {
-            Err(format!("Cannot create a ServiceAddress from a non-service BusAddress"))
+            Err(format!(
+                "Cannot create a ServiceAddress from a non-service BusAddress"
+            ))
         }
     }
 
@@ -209,7 +210,7 @@ impl ServiceAddress {
                 is_client: false,
                 is_service: true,
                 is_router: false,
-            }
+            },
         }
     }
 
@@ -230,16 +231,17 @@ impl fmt::Display for ServiceAddress {
 
 #[derive(Debug, Clone)]
 pub struct RouterAddress {
-    addr: BusAddress
+    addr: BusAddress,
 }
 
 impl RouterAddress {
-
     pub fn from_addr(addr: BusAddress) -> Result<Self, String> {
         if addr.is_router() {
             Ok(RouterAddress { addr })
         } else {
-            Err(format!("Cannot create a RouterAddress from a non-service BusAddress"))
+            Err(format!(
+                "Cannot create a RouterAddress from a non-service BusAddress"
+            ))
         }
     }
 
@@ -267,7 +269,7 @@ impl RouterAddress {
                 is_client: false,
                 is_service: false,
                 is_router: true,
-            }
+            },
         }
     }
 

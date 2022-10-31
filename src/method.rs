@@ -6,7 +6,7 @@ use std::fmt;
 pub type MethodHandler = fn(
     &mut Box<dyn app::ApplicationWorker>,
     &mut session::ServerSession,
-    &message::Method
+    &message::Method,
 ) -> Result<(), String>;
 
 #[derive(Debug, Copy, Clone)]
@@ -59,12 +59,7 @@ pub struct Method {
 }
 
 impl Method {
-
-    pub fn new(
-        name: &str,
-        param_count: ParamCount,
-        handler: MethodHandler
-    ) -> Method {
+    pub fn new(name: &str, param_count: ParamCount, handler: MethodHandler) -> Method {
         Method {
             handler,
             param_count,

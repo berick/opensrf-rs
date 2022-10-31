@@ -1,12 +1,12 @@
+use super::app;
 use super::client::Client;
 use super::client::ClientHandle;
-use super::message;
-use super::session;
 use super::conf;
 use super::logging::Logger;
-use super::worker::Worker;
+use super::message;
 use super::method;
-use super::app;
+use super::session;
+use super::worker::Worker;
 use signal_hook;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -76,7 +76,6 @@ impl Server {
         mut config: conf::Config,
         application: Box<dyn app::Application>,
     ) -> Self {
-
         let service = application.name();
 
         if config.get_service_config(service).is_none() {
@@ -185,7 +184,7 @@ impl Server {
                 worker_id,
                 confref,
                 methods,
-                to_parent_tx
+                to_parent_tx,
             );
         });
 
@@ -209,13 +208,7 @@ impl Server {
     ) {
         log::trace!("Creating new worker {worker_id}");
 
-        let mut worker = match Worker::new(
-            service,
-            worker_id,
-            config,
-            methods,
-            to_parent_tx
-        ) {
+        let mut worker = match Worker::new(service, worker_id, config, methods, to_parent_tx) {
             Ok(w) => w,
             Err(e) => {
                 log::error!("Cannot create worker: {e}. Exiting.");
@@ -270,7 +263,7 @@ impl Server {
                 domain.name(),
                 "register",
                 Some(self.service()),
-                false
+                false,
             )?;
         }
         Ok(())
@@ -292,10 +285,7 @@ impl Server {
 
     fn setup_signal_handlers(&self) -> Result<(), String> {
         // If any of these signals occur, our self.stopping flag will be set to true
-        for sig in [
-            signal_hook::consts::SIGTERM,
-            signal_hook::consts::SIGINT
-        ] {
+        for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
             if let Err(e) = signal_hook::flag::register(sig, self.stopping.clone()) {
                 return Err(format!("Cannot register signal handler: {e}"));
             }
@@ -321,7 +311,7 @@ impl Server {
         let name = "opensrf.system.echo";
         hash.insert(
             name.to_string(),
-            method::Method::new(name, method::ParamCount::Any, system_method_echo)
+            method::Method::new(name, method::ParamCount::Any, system_method_echo),
         );
     }
 
@@ -445,12 +435,10 @@ impl Server {
 fn system_method_echo(
     _worker: &mut Box<dyn app::ApplicationWorker>,
     session: &mut session::ServerSession,
-    method: &message::Method
+    method: &message::Method,
 ) -> Result<(), String> {
     for p in method.params() {
         session.respond(p.clone())?;
     }
     Ok(())
 }
-
-

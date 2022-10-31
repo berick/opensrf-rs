@@ -24,11 +24,7 @@ pub struct Logger {
 }
 
 impl Logger {
-    pub fn new(
-        application: &str,
-        loglevel: log::LevelFilter,
-        facility: syslog::Facility,
-    ) -> Self {
+    pub fn new(application: &str, loglevel: log::LevelFilter, facility: syslog::Facility) -> Self {
         Logger {
             loglevel,
             facility,
@@ -111,7 +107,10 @@ impl log::Log for Logger {
             levelname,
             process::id(),
             target,
-            match record.line() { Some(l) => l, _ => 0 },
+            match record.line() {
+                Some(l) => l,
+                _ => 0,
+            },
             tid,
             record.args()
         );

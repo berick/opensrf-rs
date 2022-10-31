@@ -3,7 +3,6 @@ use opensrf::Config;
 use opensrf::Logger;
 
 fn main() -> Result<(), String> {
-
     let mut conf = Config::from_file("conf/opensrf.yml")?;
     let connection = conf.set_primary_connection("service", "public.localhost")?;
 

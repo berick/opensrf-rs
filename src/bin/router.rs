@@ -499,14 +499,14 @@ impl Router {
 
         let from = match self.primary_domain.bus() {
             Some(b) => b.address().full(),
-            None => self.listen_address.full()
+            None => self.listen_address.full(),
         };
 
         let tm = TransportMessage::with_body(
             tm.from(), // Recipient.  Bounce it back.
             from,
             tm.thread(),
-            Message::new(MessageType::Status, trace, payload)
+            Message::new(MessageType::Status, trace, payload),
         );
 
         // Bounce-backs will always be directed back to a client
