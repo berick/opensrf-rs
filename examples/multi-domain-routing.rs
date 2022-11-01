@@ -11,7 +11,7 @@ fn main() -> Result<(), String> {
         .init()
         .unwrap();
 
-    let mut client = Client::new(conf.to_shared())?;
+    let mut client = Client::connect(conf.to_shared())?;
 
     // Sending a request to a public service should be OK with our
     // public client.

@@ -52,7 +52,7 @@ impl Application for RsPrivateApplication {
 
     fn register_methods(
         &self,
-        _client: client::ClientHandle,
+        _client: client::Client,
         config: Arc<conf::Config>,
     ) -> Result<Vec<method::Method>, String> {
         log::info!(
@@ -83,7 +83,7 @@ impl Application for RsPrivateApplication {
 
 struct RsPrivateWorker {
     env: Option<RsPrivateEnv>,
-    client: Option<client::ClientHandle>,
+    client: Option<client::Client>,
     config: Option<Arc<conf::Config>>,
     count: usize,
 }
@@ -121,7 +121,7 @@ impl ApplicationWorker for RsPrivateWorker {
     /// Panics if we cannot downcast the env provided to the expected type.
     fn absorb_env(
         &mut self,
-        client: client::ClientHandle,
+        client: client::Client,
         config: Arc<conf::Config>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {

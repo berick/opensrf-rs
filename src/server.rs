@@ -1,6 +1,5 @@
 use super::app;
 use super::client::Client;
-use super::client::ClientHandle;
 use super::conf;
 use super::logging::Logger;
 use super::message;
@@ -60,7 +59,7 @@ pub struct Server {
     application: Box<dyn app::Application>,
     methods: Option<Arc<HashMap<String, method::Method>>>,
     config: Arc<conf::Config>,
-    client: ClientHandle,
+    client: Client,
     // Worker threads are tracked via their bus address.
     workers: HashMap<u64, WorkerThread>,
     // Each thread gets a simple numeric ID.
@@ -95,7 +94,7 @@ impl Server {
 
         let config = config.to_shared();
 
-        let client = match Client::new(config.clone()) {
+        let client = match Client::connect(config.clone()) {
             Ok(c) => c,
             Err(e) => panic!("Server cannot connect to bus: {}", e),
         };

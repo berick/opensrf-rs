@@ -1,14 +1,16 @@
-use super::addr::RouterAddress;
+use super::addr::{ClientAddress, RouterAddress};
 use super::session::ResponseIterator;
 use super::session::SessionHandle;
-use super::*;
+use super::message;
+use super::bus;
+use super::conf;
+use super::util;
 use json::JsonValue;
 use log::{info, trace};
+use std::rc::Rc;
 use std::cell::RefCell;
-use std::cell::{Ref, RefMut};
 use std::collections::HashMap;
 use std::fmt;
-use std::rc::Rc;
 use std::sync::Arc;
 
 const DEFAULT_ROUTER_COMMAND_TIMEOUT: i32 = 10;
@@ -18,7 +20,11 @@ pub trait DataSerializer {
     fn unpack(&self, value: &JsonValue) -> JsonValue;
 }
 
-pub struct Client {
+/// Generally speaking, we only need 1 ClientSingleton per thread (hence
+/// the name).  This manages one bus connection per domain and stores
+/// messages pulled from the bus that have not yet been processed by
+/// higher-up modules.
+pub struct ClientSingleton {
     bus: bus::Bus,
 
     /// Our primary domain
@@ -38,29 +44,25 @@ pub struct Client {
     serializer: Option<Arc<dyn DataSerializer>>,
 }
 
-impl Client {
-    pub fn new(config: Arc<conf::Config>) -> Result<ClientHandle, String> {
+impl ClientSingleton {
+    fn new(config: Arc<conf::Config>) -> Result<ClientSingleton, String> {
         let con = match config.primary_connection() {
             Some(c) => c,
             None => {
-                return Err(format!("Client Config requires a primary connection"));
+                return Err(format!("ClientSingleton Config requires a primary connection"));
             }
         };
 
         let bus = bus::Bus::new(&con)?;
         let domain = con.domain().name().to_string();
 
-        let client = Client {
+        Ok(ClientSingleton {
             config,
             domain,
             bus: bus,
             backlog: Vec::new(),
             remote_bus_map: HashMap::new(),
             serializer: None,
-        };
-
-        Ok(ClientHandle {
-            client: Rc::new(RefCell::new(client)),
         })
     }
 
@@ -68,13 +70,17 @@ impl Client {
         &self.serializer
     }
 
+    fn clear_backlog(&mut self) {
+        self.backlog.clear();
+    }
+
     /// Full bus address as a string
-    pub fn address(&self) -> &str {
+    fn address(&self) -> &str {
         self.bus.address().full()
     }
 
     /// Our primary bus domain
-    pub fn domain(&self) -> &str {
+    fn domain(&self) -> &str {
         &self.domain
     }
 
@@ -125,17 +131,6 @@ impl Client {
         self.get_domain_bus(domain)
     }
 
-    /// Discard any unprocessed messages from our backlog and clear our
-    /// stream of pending messages on the bus.
-    pub fn clear(&mut self) -> Result<(), String> {
-        self.backlog.clear();
-        self.bus.clear_stream()
-    }
-
-    pub fn disconnect_bus(&mut self) -> Result<(), String> {
-        self.bus.disconnect()
-    }
-
     /// Returns the first transport message pulled from the transport
     /// message backlog that matches the provided thread.
     fn recv_session_from_backlog(&mut self, thread: &str) -> Option<message::TransportMessage> {
@@ -173,7 +168,7 @@ impl Client {
         }
     }
 
-    pub fn send_router_command(
+    fn send_router_command(
         &mut self,
         domain: &str,
         router_command: &str,
@@ -202,6 +197,10 @@ impl Client {
         }
 
         // Always listen on our primary bus.
+        // TODO rethink this.  If we have replies from other requests
+        // sitting in the bus, they may be received here instead
+        // of the expected router response.  self.bus.clear() before
+        // send is one option, but pretty heavy-handed.
         match self.bus.recv(DEFAULT_ROUTER_COMMAND_TIMEOUT, None)? {
             Some(tm) => match tm.router_reply() {
                 Some(reply) => match json::parse(reply) {
@@ -224,54 +223,80 @@ impl Client {
     }
 }
 
-impl fmt::Display for Client {
+impl fmt::Display for ClientSingleton {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Client({})", self.address())
+        write!(f, "ClientSingleton({})", self.address())
     }
 }
 
-/// Wrapper around a Client Ref so we can easily share a client
+/// Wrapper around our ClientSingleton Ref so we can easily share a client
 /// within a given thread.
 ///
 /// Wrapping the Ref in a struct allows us to present a client-like
 /// API to the caller.  I.e. the caller is not required to .borrow() /
 /// .borrow_mut() directly when performing actions against the client Ref.
 ///
-/// When a new client Ref is needed, clone the ClientHandle.
-pub struct ClientHandle {
-    client: Rc<RefCell<Client>>,
+/// When a new client Ref is needed, clone the Client.
+pub struct Client {
+    singleton: Rc<RefCell<ClientSingleton>>,
+    address: ClientAddress,
+    domain: String,
 }
 
-impl ClientHandle {
+impl Client {
+    pub fn connect(config: Arc<conf::Config>) -> Result<Client, String> {
+
+        // This performs the actual bus-level connection.
+        let singleton = ClientSingleton::new(config)?;
+
+        let address = singleton.bus().address().clone();
+        let domain = singleton.domain().to_string();
+
+        Ok(Client {
+            address,
+            domain,
+            singleton: Rc::new(RefCell::new(singleton)),
+        })
+    }
+
+    pub fn singleton(&self) -> &Rc<RefCell<ClientSingleton>> {
+        &self.singleton
+    }
+
     pub fn clone(&self) -> Self {
-        ClientHandle {
-            client: self.client.clone(),
+        Client {
+            address: self.address().clone(),
+            domain: self.domain().to_string(),
+            singleton: self.singleton().clone()
         }
     }
 
-    pub fn new(client: Rc<RefCell<Client>>) -> Self {
-        ClientHandle { client }
+    pub fn set_serializer(&self, serializer: Arc<dyn DataSerializer>) {
+        self.singleton.borrow_mut().serializer = Some(serializer);
+    }
+
+    pub fn address(&self) -> &ClientAddress {
+        &self.address
+    }
+
+    pub fn domain(&self) -> &str {
+        &self.domain
     }
 
     /// Create a new client session for the requested service.
     pub fn session(&mut self, service: &str) -> SessionHandle {
-        SessionHandle::new(self.client.clone(), service)
+        SessionHandle::new(self.clone(), service)
     }
 
-    pub fn client_mut(&self) -> RefMut<Client> {
-        self.client.borrow_mut()
+    /// Discard any unprocessed messages from our backlog and clear our
+    /// stream of pending messages on the bus.
+    pub fn clear(&mut self) -> Result<(), String> {
+        self.singleton().borrow_mut().clear_backlog();
+        self.singleton().borrow_mut().bus_mut().clear_stream()
     }
 
-    pub fn client(&self) -> Ref<Client> {
-        self.client.borrow()
-    }
-
-    pub fn set_serializer(&self, serializer: Arc<dyn DataSerializer>) {
-        self.client.borrow_mut().serializer = Some(serializer);
-    }
-
-    pub fn clone_client(&self) -> Rc<RefCell<Client>> {
-        self.client.clone()
+    pub fn setup_stream(&mut self, name: Option<&str>) -> Result<(), String> {
+        self.singleton().borrow_mut().bus_mut().setup_stream(name)
     }
 
     pub fn send_router_command(
@@ -281,7 +306,7 @@ impl ClientHandle {
         router_class: Option<&str>,
         await_reply: bool,
     ) -> Result<Option<JsonValue>, String> {
-        self.client
+        self.singleton()
             .borrow_mut()
             .send_router_command(domain, command, router_class, await_reply)
     }

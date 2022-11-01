@@ -9,11 +9,9 @@ fn main() -> Result<(), String> {
     let con = conf.set_primary_connection("service", "private.localhost")?;
 
     let ct = con.connection_type();
-    Logger::new(ct.log_level(), ct.log_facility())
-        .init()
-        .unwrap();
+    Logger::new(ct.log_level(), ct.log_facility()).init().unwrap();
 
-    let mut client = Client::new(conf.to_shared())?;
+    let mut client = Client::connect(conf.to_shared())?;
 
     // ---------------------------------------------------------
     // SESSION + MANUAL REQUEST --------------------------------

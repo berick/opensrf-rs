@@ -1,5 +1,4 @@
 pub use client::Client;
-pub use client::ClientHandle;
 pub use conf::Config;
 pub use logging::Logger;
 pub use session::SessionHandle;

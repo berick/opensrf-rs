@@ -18,7 +18,7 @@ pub trait ApplicationWorker: Any {
     /// Passing copies of Server-global environment data to the worker.
     fn absorb_env(
         &mut self,
-        client: client::ClientHandle,
+        client: client::Client,
         config: Arc<conf::Config>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String>;
@@ -41,7 +41,7 @@ pub trait Application {
     /// Called before workers are spawned.
     fn register_methods(
         &self,
-        client: client::ClientHandle,
+        client: client::Client,
         config: Arc<conf::Config>,
     ) -> Result<Vec<method::Method>, String>;
 

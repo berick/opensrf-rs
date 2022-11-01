@@ -17,7 +17,7 @@ fn main() -> Result<(), String> {
         .init()
         .unwrap();
 
-    let mut client = Client::new(conf.to_shared())?;
+    let mut client = Client::connect(conf.to_shared())?;
 
     if let Some(jv) = client.send_router_command(DOMAIN, "summarize", None, true)? {
         println!("Router command returned: {}", jv.dump());

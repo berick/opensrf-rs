@@ -1,6 +1,6 @@
 use super::addr::{ClientAddress, ServiceAddress};
 use super::app;
-use super::client::{Client, ClientHandle};
+use super::client::Client;
 use super::conf;
 use super::message;
 use super::message::Message;
@@ -12,7 +12,6 @@ use super::method;
 use super::method::ParamCount;
 use super::server::{WorkerState, WorkerStateEvent};
 use super::session::ServerSession;
-use std::cell::{Ref, RefMut};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::mpsc;
@@ -26,7 +25,7 @@ pub struct Worker {
 
     config: Arc<conf::Config>,
 
-    client: ClientHandle,
+    client: Client,
 
     // True if the caller has requested a stateful conversation.
     connected: bool,
@@ -67,7 +66,7 @@ impl Worker {
         // in the Server.
         let sconf = config.get_service_config(&service).unwrap().clone();
 
-        let client = Client::new(config.clone())?;
+        let client = Client::connect(config.clone())?;
 
         Ok(Worker {
             config,
@@ -80,6 +79,11 @@ impl Worker {
             connected: false,
             service_conf: sconf,
         })
+    }
+
+    /// Mutable Ref to our under-the-covers client singleton.
+    fn client_internal_mut(&self) -> RefMut<ClientSingleton> {
+        self.client.singleton().borrow_mut()
     }
 
     /// Current session
@@ -100,16 +104,6 @@ impl Worker {
 
     pub fn worker_id(&self) -> u64 {
         self.worker_id
-    }
-
-    /// Shortcut for mutable client ref.
-    fn client(&self) -> Ref<Client> {
-        self.client.client()
-    }
-
-    /// Shortcut for mutable client ref.
-    fn client_mut(&mut self) -> RefMut<Client> {
-        self.client.client_mut()
     }
 
     pub fn create_app_worker(
@@ -133,16 +127,12 @@ impl Worker {
         let mut requests: u32 = 0;
         let max_reqs = self.service_conf().max_requests();
         let service_addr = ServiceAddress::new(&self.service).full().to_string();
-        let local_addr = self.client().address().to_string();
+        let local_addr = self.client.address().full().to_string();
         let keepalive = self.service_conf().keepalive() as i32;
 
         // Setup the stream for our service.  This is the top-level
         // service address where new requests arrive.
-        if let Err(e) = self
-            .client_mut()
-            .bus_mut()
-            .setup_stream(Some(&service_addr))
-        {
+        if let Err(e) = self.client.singleton().borrow_mut().bus_mut().setup_stream(Some(&service_addr)) {
             log::error!("{selfstr} cannot setup service stream at {service_addr}: {e}");
             return;
         }
@@ -175,7 +165,11 @@ impl Worker {
                 sent_to
             );
 
-            let recv_op = self.client_mut().bus_mut().recv(timeout, Some(sent_to));
+            let recv_op = self.client
+                .singleton()
+                .borrow_mut()
+                .bus_mut()
+                .recv(timeout, Some(sent_to));
 
             if let Err(e) = self.notify_state(WorkerState::Active) {
                 log::error!("{self} failed to notify parent of Active state. Exiting. {e}");
@@ -258,7 +252,7 @@ impl Worker {
         if self.session.is_none() || self.session().thread().ne(tmsg.thread()) {
             log::trace!("server: creating new server session for {}", tmsg.thread());
             self.session = Some(ServerSession::new(
-                self.client.clone_client(),
+                self.client.clone(),
                 &self.service,
                 tmsg.thread(),
                 0, // thread trace -- updated later as needed
@@ -277,7 +271,7 @@ impl Worker {
     fn reset(&mut self) -> Result<(), String> {
         self.connected = false;
         self.session = None;
-        self.client_mut().clear()
+        self.client.clear()
     }
 
     fn handle_message(
@@ -320,7 +314,7 @@ impl Worker {
     fn reply_with_status(&mut self, stat: MessageStatus, stat_text: &str) -> Result<(), String> {
         let tmsg = TransportMessage::with_body(
             self.session().sender().full(),
-            self.client().address(),
+            self.client.address().full(),
             self.session().thread(),
             Message::new(
                 MessageType::Status,
@@ -330,7 +324,8 @@ impl Worker {
         );
 
         self.client
-            .client_mut()
+            .singleton()
+            .borrow_mut()
             .get_domain_bus(self.session().sender().domain())?
             .send(&tmsg)
     }
@@ -361,7 +356,7 @@ impl Worker {
         // local message bus to avoid encountering any stale messages
         // lingering from the previous conversation.
         if !self.connected {
-            self.client_mut().clear()?;
+            self.client.clear()?;
         }
 
         let method = match self.methods.get(request.method()) {
@@ -402,38 +397,12 @@ impl Worker {
         }
     }
 
-    /*
-    fn find_method(&mut self, name: &str) -> Option<&Method> {
-
-        if let Some(m) = self.known_methods.get(api_name) {
-            log::trace!("{self} found known good method for {api_name}");
-            return Some(*m);
-        }
-
-
-        // Look for a registered method whose API spec matches the
-        // api name for the requested method.
-        for (name, method) in self.methods.enumerate() {
-            if method.api_name_matches(api_name) {
-                // Store the found method under the requested name for
-                // faster lookup on subsequent calls.
-                //self.known_methods.insert(api_name.to_string(), &m);
-                return Some(&m);
-            }
-        }
-
-        log::error!("{self} no method found matching api name: {api_name}");
-
-        None
-    }
-    */
-
     fn reply_bad_request(&mut self, text: &str) -> Result<(), String> {
         self.connected = false;
 
         let tmsg = TransportMessage::with_body(
             self.session().sender().full(),
-            self.client().address(),
+            self.client.address().full(),
             self.session().thread(),
             Message::new(
                 MessageType::Status,
@@ -447,7 +416,8 @@ impl Worker {
         );
 
         self.client
-            .client_mut()
+            .singleton()
+            .borrow_mut()
             .get_domain_bus(self.session().sender().domain())?
             .send(&tmsg)
     }

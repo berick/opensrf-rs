@@ -1,5 +1,5 @@
 use super::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
-use super::client::Client;
+use super::client::{ClientSingleton, Client};
 use super::message;
 use super::message::Message;
 use super::message::MessageStatus;
@@ -11,9 +11,10 @@ use super::message::TransportMessage;
 use super::util;
 use json::JsonValue;
 use log::{debug, error, trace, warn};
-use std::cell::{Ref, RefCell, RefMut};
 use std::fmt;
 use std::rc::Rc;
+use std::cell::RefCell;
+use std::cell::RefMut;
 
 const CONNECT_TIMEOUT: i32 = 10;
 const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
@@ -76,8 +77,8 @@ impl Request {
 
 /// Client communication state maintenance.
 struct Session {
-    /// Link to our Client so we can ask it to pull data from the Bus.
-    client: Rc<RefCell<Client>>,
+    /// Client so we can ask it to pull data from the Bus for us.
+    client: Client,
 
     /// Each session is identified on the network by a random thread string.
     thread: String,
@@ -118,8 +119,8 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    fn new(client: Rc<RefCell<Client>>, service: &str) -> Session {
-        let router_addr = RouterAddress::new(client.borrow().domain());
+    fn new(client: Client, service: &str) -> Session {
+        let router_addr = RouterAddress::new(client.domain());
         Session {
             client,
             router_addr,
@@ -131,14 +132,6 @@ impl Session {
             backlog: Vec::new(),
             thread: util::random_number(16),
         }
-    }
-
-    fn client(&self) -> Ref<Client> {
-        self.client.borrow()
-    }
-
-    fn client_mut(&self) -> RefMut<Client> {
-        self.client.borrow_mut()
     }
 
     fn service(&self) -> &str {
@@ -170,6 +163,12 @@ impl Session {
 
     fn service_addr(&self) -> &ServiceAddress {
         &self.service_addr
+    }
+
+
+    /// Mutable Ref to our under-the-covers client singleton.
+    fn client_internal_mut(&self) -> RefMut<ClientSingleton> {
+        self.client.singleton().borrow_mut()
     }
 
     /// Returns the underlying address of the remote end if we have
@@ -214,7 +213,7 @@ impl Session {
                 return Ok(None);
             }
 
-            let tmsg = match self.client_mut().recv_session(&mut timer, self.thread())? {
+            let tmsg = match self.client_internal_mut().recv_session(&mut timer, self.thread())? {
                 Some(m) => m,
                 None => continue, // timeout, etc.
             };
@@ -240,7 +239,7 @@ impl Session {
         if let Payload::Result(resp) = msg.payload() {
             // .to_owned() because this message is about to get dropped.
             let mut value = resp.content().to_owned();
-            if let Some(s) = self.client().serializer() {
+            if let Some(s) = self.client.singleton().borrow().serializer() {
                 value = s.unpack(&value);
             }
 
@@ -321,7 +320,7 @@ impl Session {
         let mut pvec = Vec::new();
         for p in params {
             let mut jv = json::from(p);
-            if let Some(s) = self.client().serializer() {
+            if let Some(s) = self.client.singleton().borrow().serializer() {
                 jv = s.pack(&jv);
             }
             pvec.push(jv);
@@ -329,7 +328,7 @@ impl Session {
 
         let tmsg = TransportMessage::with_body(
             self.destination_addr().full(),
-            self.client().address(),
+            self.client.address().full(),
             self.thread(),
             Message::new(
                 MessageType::Request,
@@ -342,15 +341,18 @@ impl Session {
             // Top-level API calls always go through the router on
             // our primary domain.
 
-            let router_addr = RouterAddress::new(self.client().domain());
-            self.client_mut()
+            let router_addr = RouterAddress::new(self.client.domain());
+            self.client
+                .singleton()
+                .borrow_mut()
                 .bus_mut()
                 .send_to(&tmsg, router_addr.full())?;
+
         } else {
             if let Some(a) = self.worker_addr() {
                 // Requests directly to client addresses must be routed
                 // to the domain of the client address.
-                self.client_mut().get_domain_bus(a.domain())?.send(&tmsg)?;
+                self.client_internal_mut().get_domain_bus(a.domain())?.send(&tmsg)?;
             } else {
                 self.reset();
                 return Err(format!("We are connected, but have no worker_addr()"));
@@ -373,13 +375,15 @@ impl Session {
 
         let tm = TransportMessage::with_body(
             self.destination_addr().full(),
-            self.client().address(),
+            self.client.address().full(),
             self.thread(),
             Message::new(MessageType::Connect, trace, Payload::NoPayload),
         );
 
         // Connect calls always go to our router.
-        self.client_mut()
+        self.client
+            .singleton()
+            .borrow_mut()
             .bus_mut()
             .send_to(&tm, self.router_addr().full())?;
 
@@ -411,12 +415,14 @@ impl Session {
 
         let tmsg = TransportMessage::with_body(
             dest_addr.full(),
-            self.client().address(),
+            self.client.address().full(),
             self.thread(),
             Message::new(MessageType::Disconnect, trace, Payload::NoPayload),
         );
 
-        self.client_mut()
+        self.client
+            .singleton()
+            .borrow_mut()
             .get_domain_bus(dest_addr.domain())?
             .send(&tmsg)?;
 
@@ -432,7 +438,7 @@ pub struct SessionHandle {
 }
 
 impl SessionHandle {
-    pub fn new(client: Rc<RefCell<Client>>, service: &str) -> SessionHandle {
+    pub fn new(client: Client, service: &str) -> SessionHandle {
         let ses = Session::new(client, service);
 
         trace!("Created new session {ses}");
@@ -504,8 +510,8 @@ pub struct ServerSession {
     /// Service name.
     service: String,
 
-    /// Link to our Client so we can ask it to pull data from the Bus.
-    client: Rc<RefCell<Client>>,
+    /// Link to our ClientSingleton so we can ask it to pull data from the Bus.
+    client: Client,
 
     /// Each session is identified on the network by a random thread string.
     thread: String,
@@ -532,7 +538,7 @@ impl fmt::Display for ServerSession {
 
 impl ServerSession {
     pub fn new(
-        client: Rc<RefCell<Client>>,
+        client: Client,
         service: &str,
         thread: &str,
         last_thread_trace: usize,
@@ -572,6 +578,11 @@ impl ServerSession {
         &self.sender
     }
 
+    /// Mutable Ref to our under-the-covers client singleton.
+    fn client_internal_mut(&self) -> RefMut<ClientSingleton> {
+        self.client.singleton().borrow_mut()
+    }
+
     pub fn responded_complete(&self) -> bool {
         self.responded_complete
     }
@@ -581,7 +592,7 @@ impl ServerSession {
         T: Into<JsonValue>,
     {
         let mut value = json::from(value);
-        if let Some(s) = self.client.borrow().serializer() {
+        if let Some(s) = self.client.singleton().borrow().serializer() {
             value = s.unpack(&value);
         }
 
@@ -598,14 +609,14 @@ impl ServerSession {
 
         let tmsg = TransportMessage::with_body(
             self.sender.full(),
-            self.client.borrow().address(),
+            self.client.address().full(),
             self.thread(),
             msg,
         );
 
         let domain = self.sender.domain();
 
-        self.client.borrow_mut().get_domain_bus(domain)?.send(&tmsg)
+        self.client_internal_mut().get_domain_bus(domain)?.send(&tmsg)
     }
 
     pub fn respond_complete<T>(&mut self, value: T) -> Result<(), String>
@@ -643,13 +654,13 @@ impl ServerSession {
 
         let tmsg = TransportMessage::with_body(
             self.sender.full(),
-            self.client.borrow().address(),
+            self.client.address().full(),
             self.thread(),
             msg,
         );
 
         let domain = self.sender.domain();
 
-        self.client.borrow_mut().get_domain_bus(domain)?.send(&tmsg)
+        self.client_internal_mut().get_domain_bus(domain)?.send(&tmsg)
     }
 }

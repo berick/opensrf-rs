@@ -1,5 +1,5 @@
 use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
-use opensrf::client::ClientHandle;
+use opensrf::client::Client;
 use opensrf::conf;
 use opensrf::message;
 use opensrf::method;
@@ -47,7 +47,7 @@ impl Application for RsPublicApplication {
 
     fn register_methods(
         &self,
-        _client: ClientHandle,
+        _client: Client,
         _config: Arc<conf::Config>,
     ) -> Result<Vec<method::Method>, String> {
         let namer = |n| format!("{APPNAME}.{n}");
@@ -67,7 +67,7 @@ impl Application for RsPublicApplication {
 
 struct RsPublicWorker {
     env: Option<RsPublicEnv>,
-    client: Option<ClientHandle>,
+    client: Option<Client>,
     config: Option<Arc<conf::Config>>,
     relay_count: usize,
 }
@@ -97,11 +97,11 @@ impl RsPublicWorker {
 
     ///
     /// self.client is guaranteed to set after absorb_env()
-    fn _client(&self) -> &ClientHandle {
+    fn _client(&self) -> &Client {
         self.client.as_ref().unwrap()
     }
 
-    fn client_mut(&mut self) -> &mut ClientHandle {
+    fn client_mut(&mut self) -> &mut Client {
         self.client.as_mut().unwrap()
     }
 }
@@ -114,7 +114,7 @@ impl ApplicationWorker for RsPublicWorker {
     /// Panics if we cannot downcast the env provided to the expected type.
     fn absorb_env(
         &mut self,
-        client: ClientHandle,
+        client: Client,
         config: Arc<conf::Config>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {
