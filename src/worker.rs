@@ -1,6 +1,6 @@
 use super::addr::{ClientAddress, ServiceAddress};
 use super::app;
-use super::client::Client;
+use super::client::{ClientSingleton, Client};
 use super::conf;
 use super::message;
 use super::message::Message;
@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::mpsc;
 use std::sync::Arc;
+use std::cell::RefMut;
 use std::thread;
 use std::time;
 
@@ -132,7 +133,7 @@ impl Worker {
 
         // Setup the stream for our service.  This is the top-level
         // service address where new requests arrive.
-        if let Err(e) = self.client.singleton().borrow_mut().bus_mut().setup_stream(Some(&service_addr)) {
+        if let Err(e) = self.client_internal_mut().bus_mut().setup_stream(Some(&service_addr)) {
             log::error!("{selfstr} cannot setup service stream at {service_addr}: {e}");
             return;
         }
@@ -165,9 +166,8 @@ impl Worker {
                 sent_to
             );
 
-            let recv_op = self.client
-                .singleton()
-                .borrow_mut()
+            let recv_op = self
+                .client_internal_mut()
                 .bus_mut()
                 .recv(timeout, Some(sent_to));
 
@@ -323,9 +323,7 @@ impl Worker {
             ),
         );
 
-        self.client
-            .singleton()
-            .borrow_mut()
+        self.client_internal_mut()
             .get_domain_bus(self.session().sender().domain())?
             .send(&tmsg)
     }
