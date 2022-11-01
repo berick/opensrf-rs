@@ -60,7 +60,7 @@ message-bus:
 # Names are free-form and have no meaning outside of this configuration file.
 service-groups:
   public-services:
-    - opensrf.rspublic
+    - opensrf.rs-public
 #    - opensrf.math
 #    - open-ils.actor
 #    - open-ils.acq
@@ -104,7 +104,7 @@ log-protect:
   - open-ils.actor.geo
 
 services:
-  opensrf.rsprivate:
+  opensrf.rs-private:
     lang: rust
     keepalive: 5
     workers:
@@ -113,7 +113,7 @@ services:
       min-idle: 1
       max-idle: 5
       max-requests: 1000
-  opensrf.rspublic:
+  opensrf.rs-public:
     lang: rust
     keepalive: 5
     workers:

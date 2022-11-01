@@ -87,9 +87,9 @@ impl Server {
             Err(e) => panic!("Cannot set primary connection for domain {}: {}", domain, e),
         };
 
-        let ctype = conn.connection_type();
+        let ct = conn.connection_type();
 
-        Logger::new(service, ctype.log_level(), ctype.log_facility())
+        Logger::new(ct.log_level(), ct.log_facility())
             .init()
             .unwrap();
 

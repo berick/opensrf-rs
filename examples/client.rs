@@ -3,8 +3,8 @@ use opensrf::Config;
 use opensrf::Logger;
 use std::collections::HashMap;
 
-const SERVICE: &str = "opensrf.rspublic";
-const METHOD: &str = "opensrf.rspublic.echo";
+const SERVICE: &str = "opensrf.rs-public";
+const METHOD: &str = "opensrf.rs-public.echo";
 const DOMAIN: &str = "public.localhost";
 
 fn main() -> Result<(), String> {
@@ -12,8 +12,8 @@ fn main() -> Result<(), String> {
 
     let connection = conf.set_primary_connection("service", DOMAIN)?;
 
-    let ctype = connection.connection_type();
-    Logger::new("client", ctype.log_level(), ctype.log_facility())
+    let ct = connection.connection_type();
+    Logger::new(ct.log_level(), ct.log_facility())
         .init()
         .unwrap();
 

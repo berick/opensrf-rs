@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const APPNAME: &str = "opensrf.rsprivate";
+const APPNAME: &str = "opensrf.rs-private";
 
 /// Clone is needed here to support our implementation of downcast();
 #[derive(Debug, Clone)]
@@ -61,15 +61,15 @@ impl Application for RsPrivateApplication {
         );
 
         Ok(vec![
-            method::Method::new("opensrf.rsprivate.time", method::ParamCount::Zero, time),
-            method::Method::new("opensrf.rsprivate.echo", method::ParamCount::Any, echo),
+            method::Method::new("opensrf.rs-private.time", method::ParamCount::Zero, time),
+            method::Method::new("opensrf.rs-private.echo", method::ParamCount::Any, echo),
             method::Method::new(
-                "opensrf.rsprivate.counter",
+                "opensrf.rs-private.counter",
                 method::ParamCount::Zero,
                 counter,
             ),
             method::Method::new(
-                "opensrf.rsprivate.sleep",
+                "opensrf.rs-private.sleep",
                 method::ParamCount::Range(0, 1),
                 sleep,
             ),

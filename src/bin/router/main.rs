@@ -1,6 +1,6 @@
 use chrono::prelude::{DateTime, Local};
 use log::{debug, error, info, trace, warn};
-use opensrf::addr::{BusAddress, RouterAddress};
+use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use opensrf::bus::Bus;
 use opensrf::conf;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
@@ -13,12 +13,12 @@ use std::thread;
 /// A service can have multiple controllers on a single domain.
 #[derive(Debug, Clone)]
 struct ServiceInstance {
-    address: BusAddress,
+    address: ClientAddress,
     register_time: DateTime<Local>,
 }
 
 impl ServiceInstance {
-    fn address(&self) -> &BusAddress {
+    fn address(&self) -> &ClientAddress {
         &self.address
     }
 
@@ -52,7 +52,7 @@ impl ServiceEntry {
         &self.controllers
     }
 
-    fn remove_controller(&mut self, address: &BusAddress) {
+    fn remove_controller(&mut self, address: &ClientAddress) {
         if let Some(pos) = self
             .controllers
             .iter()
@@ -143,7 +143,7 @@ impl RouterDomain {
         return self.services.iter().filter(|s| s.name().eq(name)).count() > 0;
     }
 
-    fn remove_service(&mut self, service: &str, address: &BusAddress) {
+    fn remove_service(&mut self, service: &str, address: &ClientAddress) {
         if let Some(s_pos) = self.services.iter().position(|s| s.name().eq(service)) {
             let svc = self.services.get_mut(s_pos).unwrap(); // known OK
             svc.remove_controller(address);
@@ -301,8 +301,8 @@ impl Router {
         Ok(self.remote_domains.get_mut(pos_op.unwrap()).unwrap())
     }
 
-    fn handle_unregister(&mut self, address: &BusAddress, service: &str) -> Result<(), String> {
-        let domain = address.domain().unwrap(); // Known client address
+    fn handle_unregister(&mut self, address: &ClientAddress, service: &str) -> Result<(), String> {
+        let domain = address.domain();
 
         info!(
             "De-registering domain={} service={} address={}",
@@ -344,8 +344,8 @@ impl Router {
         Ok(())
     }
 
-    fn handle_register(&mut self, address: BusAddress, service: &str) -> Result<(), String> {
-        let domain = address.domain().unwrap(); // Known to be a client addr.
+    fn handle_register(&mut self, address: ClientAddress, service: &str) -> Result<(), String> {
+        let domain = address.domain(); // Known to be a client addr.
 
         info!("Registering new domain={}", domain);
 
@@ -448,6 +448,7 @@ impl Router {
         let addr = BusAddress::new_from_string(to)?;
 
         if addr.is_service() {
+            let addr = ServiceAddress::from_addr(addr)?;
             return self.route_api_request(&addr, tm);
         } else if addr.is_router() {
             return self.handle_router_command(tm);
@@ -458,10 +459,10 @@ impl Router {
 
     fn route_api_request(
         &mut self,
-        to_addr: &BusAddress,
+        to_addr: &ServiceAddress,
         tm: TransportMessage,
     ) -> Result<(), String> {
-        let service = to_addr.service().unwrap(); // required for is_service
+        let service = to_addr.service();
 
         if self.primary_domain.has_service(service) {
             self.primary_domain.route_count += 1;
@@ -528,11 +529,7 @@ impl Router {
 
         let from = tm.from();
 
-        let from_addr = BusAddress::new_from_string(from)?;
-
-        if !from_addr.is_client() {
-            return Err(format!("Router command received from non-client address"));
-        }
+        let from_addr = ClientAddress::from_string(from)?;
 
         debug!(
             "Router command received command={} from={}",
@@ -561,7 +558,7 @@ impl Router {
     /// Deliver stats, etc. to clients that request it.
     fn deliver_information(
         &mut self,
-        from_addr: BusAddress,
+        from_addr: ClientAddress,
         mut tm: TransportMessage,
     ) -> Result<(), String> {
         let router_command = tm.router_command().unwrap(); // known exists
@@ -580,16 +577,7 @@ impl Router {
         tm.set_from(self.primary_domain.bus().unwrap().address().full());
         tm.set_to(from_addr.full());
 
-        let domain = match from_addr.domain() {
-            Some(d) => d,
-            None => {
-                return Err(format!(
-                    "Cannot send router reply to addrwess with hno domain: {from_addr}"
-                ));
-            }
-        };
-
-        let r_domain = self.find_or_create_domain(domain)?;
+        let r_domain = self.find_or_create_domain(from_addr.domain())?;
 
         if r_domain.bus.is_none() {
             r_domain.connect()?;
@@ -618,9 +606,9 @@ impl Router {
 
 fn main() {
     let config = conf::Config::from_file("conf/opensrf.yml").unwrap();
-    let ctype = config.get_connection_type("router").unwrap();
+    let ct = config.get_connection_type("router").unwrap();
 
-    Logger::new("router", ctype.log_level(), ctype.log_facility())
+    Logger::new(ct.log_level(), ct.log_facility())
         .init()
         .unwrap();
 

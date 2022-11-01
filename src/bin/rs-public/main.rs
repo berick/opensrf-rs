@@ -10,7 +10,7 @@ use std::any::Any;
 use std::env;
 use std::sync::Arc;
 
-const APPNAME: &str = "opensrf.rspublic";
+const APPNAME: &str = "opensrf.rs-public";
 
 /// Clone is needed here to support our implementation of downcast();
 #[derive(Debug, Clone)]
@@ -50,11 +50,13 @@ impl Application for RsPublicApplication {
         _client: ClientHandle,
         _config: Arc<conf::Config>,
     ) -> Result<Vec<method::Method>, String> {
+        let namer = |n| format!("{APPNAME}.{n}");
+
         Ok(vec![
-            method::Method::new("opensrf.rspublic.time", ParamCount::Zero, relay),
-            method::Method::new("opensrf.rspublic.echo", ParamCount::Any, relay),
-            method::Method::new("opensrf.rspublic.counter", ParamCount::Zero, relay),
-            method::Method::new("opensrf.rspublic.sleep", ParamCount::Range(0, 1), relay),
+            method::Method::new(&namer("time"), ParamCount::Zero, relay),
+            method::Method::new(&namer("echo"), ParamCount::Any, relay),
+            method::Method::new(&namer("counter"), ParamCount::Zero, relay),
+            method::Method::new(&namer("sleep"), ParamCount::Range(0, 1), relay),
         ])
     }
 
@@ -82,7 +84,7 @@ impl RsPublicWorker {
     }
 
     /// We must have a value here since absorb_env() is invoked on the worker.
-    pub fn env(&self) -> &RsPublicEnv {
+    pub fn _env(&self) -> &RsPublicEnv {
         self.env.as_ref().unwrap()
     }
 
@@ -95,7 +97,7 @@ impl RsPublicWorker {
 
     ///
     /// self.client is guaranteed to set after absorb_env()
-    fn client(&self) -> &ClientHandle {
+    fn _client(&self) -> &ClientHandle {
         self.client.as_ref().unwrap()
     }
 
@@ -158,12 +160,12 @@ fn relay(
 ) -> Result<(), String> {
     let mut worker = RsPublicWorker::downcast(worker)?;
     worker.relay_count += 1;
-    let api_name = method.method().replace("rspublic", "rsprivate");
+    let api_name = method.method().replace("rs-public", "rs-private");
 
     for resp in
         worker
             .client_mut()
-            .sendrecv("opensrf.rsprivate", &api_name, method.params().clone())?
+            .sendrecv("opensrf.rs-private", &api_name, method.params().clone())?
     {
         session.respond(resp.clone())?;
         session.respond(json::from(format!("Relay count: {}", worker.relay_count)))?

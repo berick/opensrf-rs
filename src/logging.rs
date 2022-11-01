@@ -24,13 +24,30 @@ pub struct Logger {
 }
 
 impl Logger {
-    pub fn new(application: &str, loglevel: log::LevelFilter, facility: syslog::Facility) -> Self {
+    pub fn new(loglevel: log::LevelFilter, facility: syslog::Facility) -> Self {
         Logger {
             loglevel,
             facility,
             writer: None,
-            application: application.to_string(),
+            application: Logger::find_app_name(),
         }
+    }
+
+    fn find_app_name() -> String {
+        if let Ok(p) = std::env::current_exe() {
+            if let Some(f) = p.file_name() {
+                if let Some(n) = f.to_str() {
+                    return n.to_string();
+                }
+            }
+        }
+
+        eprintln!("Cannot determine executable name.  See set_application()");
+        return "opensrf".to_string();
+    }
+
+    pub fn set_application(&mut self, app: &str) {
+        self.application = app.to_string();
     }
 
     pub fn set_loglevel(&mut self, loglevel: log::LevelFilter) {

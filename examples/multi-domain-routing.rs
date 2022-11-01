@@ -6,8 +6,8 @@ fn main() -> Result<(), String> {
     let mut conf = Config::from_file("conf/opensrf.yml")?;
     let connection = conf.set_primary_connection("service", "public.localhost")?;
 
-    let ctype = connection.connection_type();
-    Logger::new("client", ctype.log_level(), ctype.log_facility())
+    let ct = connection.connection_type();
+    Logger::new(ct.log_level(), ct.log_facility())
         .init()
         .unwrap();
 
@@ -15,7 +15,7 @@ fn main() -> Result<(), String> {
 
     // Sending a request to a public service should be OK with our
     // public client.
-    let mut ses = client.session("opensrf.rspublic");
+    let mut ses = client.session("opensrf.rs-public");
     let mut req = ses.request("opensrf.system.echo", vec!["Hello", "Goodbye"])?;
 
     while let Some(resp) = req.recv(5)? {
@@ -29,7 +29,7 @@ fn main() -> Result<(), String> {
     // Sending a request to a private service via our public client
     // should fail.
 
-    let mut ses = client.session("opensrf.rsprivate");
+    let mut ses = client.session("opensrf.rs-private");
     let mut req = ses.request("opensrf.system.echo", vec!["Hello", "Goodbye"])?;
 
     if let Err(e) = req.recv(5) {

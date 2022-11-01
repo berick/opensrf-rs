@@ -1,11 +1,17 @@
+use opensrf::logging::Logger;
 use opensrf::{Client, Config};
 
-const SERVICE: &str = "opensrf.rspublic";
-const METHOD: &str = "opensrf.rspublic.echo";
+const SERVICE: &str = "opensrf.rs-public";
+const METHOD: &str = "opensrf.rs-public.echo";
 
 fn main() -> Result<(), String> {
     let mut conf = Config::from_file("conf/opensrf.yml")?;
-    conf.set_primary_connection("service", "private.localhost")?;
+    let con = conf.set_primary_connection("service", "private.localhost")?;
+
+    let ct = con.connection_type();
+    Logger::new(ct.log_level(), ct.log_facility())
+        .init()
+        .unwrap();
 
     let mut client = Client::new(conf.to_shared())?;
 
@@ -52,7 +58,7 @@ fn main() -> Result<(), String> {
 
     for _ in 0..10 {
         let params: Vec<u8> = vec![];
-        for resp in client.sendrecv(SERVICE, "opensrf.rspublic.counter", params)? {
+        for resp in client.sendrecv(SERVICE, "opensrf.rs-public.counter", params)? {
             println!("Counter is {}", resp.dump());
         }
     }
