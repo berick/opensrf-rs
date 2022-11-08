@@ -37,10 +37,10 @@ impl Bus {
             }
         };
 
-        let addr = ClientAddress::new(config.domain());
+        let addr = ClientAddress::new(config.subdomain());
 
         let mut bus = Bus {
-            domain: config.domain().to_string(),
+            domain: config.subdomain().to_string(),
             connection,
             address: addr,
         };
@@ -83,7 +83,7 @@ impl Bus {
             password: Some(acct.password().to_string()),
         };
 
-        let con_addr = ConnectionAddr::Tcp(config.domain().to_string(), config.port());
+        let con_addr = ConnectionAddr::Tcp(config.subdomain().to_string(), config.port());
 
         Ok(ConnectionInfo {
             addr: con_addr,

@@ -124,7 +124,7 @@ impl BusConnectionType {
 #[derive(Debug, Clone)]
 pub struct BusConnection {
     port: u16,
-    domain: String,
+    subdomain: String,
     connection_type: BusConnectionType,
 }
 
@@ -133,86 +133,19 @@ impl BusConnection {
         &self.connection_type
     }
 
-    pub fn domain(&self) -> &str {
-        &self.domain
+    pub fn subdomain(&self) -> &str {
+        &self.subdomain
     }
 
     pub fn port(&self) -> u16 {
         self.port
     }
 
-    pub fn set_domain(&mut self, domain: &str) {
-        self.domain = domain.to_string();
+    pub fn set_subdomain(&mut self, subdomain: &str) {
+        self.subdomain = subdomain.to_string();
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum ServiceLang {
-    Perl,
-    C,
-    Rust,
-}
-
-impl From<&str> for ServiceLang {
-    fn from(s: &str) -> ServiceLang {
-        let lang = s.to_lowercase();
-        match lang.as_str() {
-            "perl" => ServiceLang::Perl,
-            "c" => ServiceLang::C,
-            "rust" => ServiceLang::Rust,
-            _ => panic!("Invalid service launguage: {}", lang),
-        }
-    }
-}
-
-impl From<&ServiceLang> for &'static str {
-    fn from(sl: &ServiceLang) -> &'static str {
-        match *sl {
-            ServiceLang::Perl => "perl",
-            ServiceLang::C => "c",
-            ServiceLang::Rust => "rust",
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Service {
-    name: String,
-    lang: ServiceLang,
-    keepalive: u32,
-    min_workers: u32,
-    max_workers: u32,
-    min_idle_workers: u32,
-    max_idle_workers: u32,
-    max_requests: u32,
-}
-
-impl Service {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-    pub fn lang(&self) -> &ServiceLang {
-        &self.lang
-    }
-    pub fn keepalive(&self) -> u32 {
-        self.keepalive
-    }
-    pub fn min_workers(&self) -> u32 {
-        self.min_workers
-    }
-    pub fn max_workers(&self) -> u32 {
-        self.max_workers
-    }
-    pub fn min_idle_workers(&self) -> u32 {
-        self.min_idle_workers
-    }
-    pub fn max_idle_workers(&self) -> u32 {
-        self.max_idle_workers
-    }
-    pub fn max_requests(&self) -> u32 {
-        self.max_requests
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -492,7 +425,7 @@ impl Config {
 
         Ok(BusConnection {
             port: subdomain.port(),
-            domain: subdomain.name().to_string(),
+            subdomain: subdomain.name().to_string(),
             connection_type: con_type.clone(),
         })
     }

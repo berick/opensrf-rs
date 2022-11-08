@@ -120,7 +120,7 @@ impl fmt::Display for Session {
 
 impl Session {
     fn new(client: Client, service: &str) -> Session {
-        let router_addr = RouterAddress::new(client.domain());
+        let router_addr = RouterAddress::new(client.subdomain());
         Session {
             client,
             router_addr,
@@ -338,9 +338,9 @@ impl Session {
 
         if !self.connected() {
             // Top-level API calls always go through the router on
-            // our primary domain.
+            // our primary subdomain.
 
-            let router_addr = RouterAddress::new(self.client.domain());
+            let router_addr = RouterAddress::new(self.client.subdomain());
             self.client
                 .singleton()
                 .borrow_mut()
@@ -350,8 +350,8 @@ impl Session {
         } else {
             if let Some(a) = self.worker_addr() {
                 // Requests directly to client addresses must be routed
-                // to the domain of the client address.
-                self.client_internal_mut().get_domain_bus(a.domain())?.send(&tmsg)?;
+                // to the subdomain of the client address.
+                self.client_internal_mut().get_subdomain_bus(a.domain())?.send(&tmsg)?;
             } else {
                 self.reset();
                 return Err(format!("We are connected, but have no worker_addr()"));
@@ -422,7 +422,7 @@ impl Session {
         self.client
             .singleton()
             .borrow_mut()
-            .get_domain_bus(dest_addr.domain())?
+            .get_subdomain_bus(dest_addr.domain())?
             .send(&tmsg)?;
 
         self.reset();
@@ -613,9 +613,9 @@ impl ServerSession {
             msg,
         );
 
-        let domain = self.sender.domain();
+        let subdomain = self.sender.domain();
 
-        self.client_internal_mut().get_domain_bus(domain)?.send(&tmsg)
+        self.client_internal_mut().get_subdomain_bus(subdomain)?.send(&tmsg)
     }
 
     pub fn respond_complete<T>(&mut self, value: T) -> Result<(), String>
@@ -658,8 +658,8 @@ impl ServerSession {
             msg,
         );
 
-        let domain = self.sender.domain();
+        let subdomain = self.sender.domain();
 
-        self.client_internal_mut().get_domain_bus(domain)?.send(&tmsg)
+        self.client_internal_mut().get_subdomain_bus(subdomain)?.send(&tmsg)
     }
 }
