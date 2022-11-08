@@ -60,7 +60,11 @@ impl BusSubDomain {
     }
 }
 
-/// A routable bus domain.
+/// A Message Bus Domain
+///
+/// Each domain consists of a public and private sub-domain.
+/// The public/private subdomains represent pointers to actual
+/// bus instances.
 #[derive(Debug, Clone)]
 pub struct BusDomain {
     name: String,
@@ -119,8 +123,8 @@ impl BusConnectionType {
 
 #[derive(Debug, Clone)]
 pub struct BusConnection {
-    domain: BusDomain,
-    subdomain_type: BusSubDomainType,
+    port: u16,
+    domain: String,
     connection_type: BusConnectionType,
 }
 
@@ -129,23 +133,16 @@ impl BusConnection {
         &self.connection_type
     }
 
-    pub fn domain(&self) -> &BusDomain {
+    pub fn domain(&self) -> &str {
         &self.domain
     }
 
-    pub fn subdomain_type(&self) -> &BusSubDomainType {
-        &self.subdomain_type
+    pub fn port(&self) -> u16 {
+        self.port
     }
 
-    pub fn set_domain(&mut self, domain: &BusDomain) {
-        self.domain = domain.clone();
-    }
-
-    pub fn active_subdomain(&self) -> &BusSubDomain {
-        match self.subdomain_type() {
-            BusSubDomainType::Private => self.domain().private(),
-            _ => self.domain().public(),
-        }
+    pub fn set_domain(&mut self, domain: &str) {
+        self.domain = domain.to_string();
     }
 }
 
@@ -488,15 +485,34 @@ impl Config {
             }
         };
 
+        let subdomain = match con_type.subdomain_type() {
+            BusSubDomainType::Private => bus_domain.private(),
+            _ => bus_domain.public(),
+        };
+
         Ok(BusConnection {
-            domain: bus_domain.clone(),
-            subdomain_type: con_type.subdomain_type().clone(),
+            port: subdomain.port(),
+            domain: subdomain.name().to_string(),
             connection_type: con_type.clone(),
         })
     }
 
     pub fn get_domain(&self, domain: &str) -> Option<&BusDomain> {
         self.domains.iter().filter(|d| d.name().eq(domain)).next()
+    }
+
+    /// Returns Option of ref to a BusSubDomain by name.
+    pub fn get_subdomain(&self, subdomain: &str) -> Option<&BusSubDomain> {
+        for domain in self.domains().iter() {
+            if domain.private().name().eq(subdomain) {
+                return Some(domain.private());
+            }
+            if domain.public().name().eq(subdomain) {
+                return Some(domain.public());
+            }
+        }
+
+        None
     }
 
     pub fn get_connection_type(&self, contype: &str) -> Option<&BusConnectionType> {

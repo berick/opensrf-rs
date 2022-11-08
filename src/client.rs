@@ -54,7 +54,7 @@ impl ClientSingleton {
         };
 
         let bus = bus::Bus::new(&con)?;
-        let domain = con.active_subdomain().name().to_string();
+        let domain = con.domain().to_string();
 
         Ok(ClientSingleton {
             config,
@@ -114,14 +114,11 @@ impl ClientSingleton {
         // connection type, etc. is used and just change the domain.
         let mut con = self.config.primary_connection().unwrap().clone();
 
-        let bus_domain = match self.config.get_domain(domain) {
-            Some(d) => d,
-            None => {
-                return Err(format!("No configuration for domain: {domain}"));
-            }
-        };
+        if self.config.get_domain(domain).is_none() {
+            return Err(format!("No configuration for domain: {domain}"));
+        }
 
-        con.set_domain(bus_domain);
+        con.set_domain(domain);
 
         let bus = bus::Bus::new(&con)?;
 

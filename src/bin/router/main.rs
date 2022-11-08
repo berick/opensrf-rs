@@ -113,7 +113,7 @@ struct RouterDomain {
 impl RouterDomain {
     fn new(config: &conf::BusConnection) -> Self {
         RouterDomain {
-            domain: config.active_subdomain().name().to_string(),
+            domain: config.domain().to_string(),
             bus: None,
             route_count: 0,
             services: Vec::new(),
@@ -223,8 +223,8 @@ struct Router {
 impl Router {
     pub fn new(config: conf::Config) -> Self {
         let busconf = config.primary_connection().unwrap();
-        let domain = busconf.active_subdomain().name();
-        let addr = RouterAddress::new(domain);
+        let domain = busconf.domain().to_string();
+        let addr = RouterAddress::new(&domain);
         let primary_domain = RouterDomain::new(&busconf);
 
         Router {
@@ -288,8 +288,8 @@ impl Router {
             // Primary connection is required at this point.
             let mut busconf = self.config.primary_connection().unwrap().clone();
 
-            if let Some(d) = self.config.get_domain(domain) {
-                busconf.set_domain(d);
+            if self.config.get_subdomain(domain).is_some() {
+                busconf.set_domain(domain);
             } else {
                 return Err(format!("Cannot route to unknown domain: {domain}"));
             }
