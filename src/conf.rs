@@ -25,30 +25,30 @@ impl BusCredentials {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum BusSubDomainType {
+pub enum BusNodeType {
     Private,
     Public
 }
 
-impl From<&String> for BusSubDomainType {
-    fn from(t: &String) -> BusSubDomainType {
+impl From<&String> for BusNodeType {
+    fn from(t: &String) -> BusNodeType {
         match t.to_lowercase().as_str() {
-            "private" => BusSubDomainType::Private,
-            "public" => BusSubDomainType::Public,
-            _ => panic!("Invalid subdomain type: {}", t),
+            "private" => BusNodeType::Private,
+            "public" => BusNodeType::Public,
+            _ => panic!("Invalid node type: {}", t),
         }
     }
 }
 
 /// A routable bus domain.
 #[derive(Debug, Clone)]
-pub struct BusSubDomain {
+pub struct BusNode {
     name: String,
     port: u16,
     allowed_services: Option<Vec<String>>,
 }
 
-impl BusSubDomain {
+impl BusNode {
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -62,25 +62,23 @@ impl BusSubDomain {
 
 /// A Message Bus Domain
 ///
-/// Each domain consists of a public and private sub-domain.
-/// The public/private subdomains represent pointers to actual
-/// bus instances.
+/// Each domain consists of a public and private node.
 #[derive(Debug, Clone)]
 pub struct BusDomain {
     name: String,
-    private: BusSubDomain,
-    public: BusSubDomain,
+    private_node: BusNode,
+    public_node: BusNode,
 }
 
 impl BusDomain {
     pub fn name(&self) -> &str {
         &self.name
     }
-    pub fn private(&self) -> &BusSubDomain {
-        &self.private
+    pub fn private_node(&self) -> &BusNode {
+        &self.private_node
     }
-    pub fn public(&self) -> &BusSubDomain {
-        &self.public
+    pub fn public_node(&self) -> &BusNode {
+        &self.public_node
     }
 }
 
@@ -92,7 +90,7 @@ pub enum LogFile {
 
 #[derive(Debug, Clone)]
 pub struct BusConnectionType {
-    subdomain_type: BusSubDomainType,
+    node_type: BusNodeType,
     credentials: BusCredentials,
     log_level: log::LevelFilter,
     log_file: LogFile,
@@ -101,8 +99,8 @@ pub struct BusConnectionType {
 }
 
 impl BusConnectionType {
-    pub fn subdomain_type(&self) -> &BusSubDomainType {
-        &self.subdomain_type
+    pub fn node_type(&self) -> &BusNodeType {
+        &self.node_type
     }
     pub fn credentials(&self) -> &BusCredentials {
         &self.credentials
@@ -124,7 +122,7 @@ impl BusConnectionType {
 #[derive(Debug, Clone)]
 pub struct BusConnection {
     port: u16,
-    subdomain: String,
+    node_name: String,
     connection_type: BusConnectionType,
 }
 
@@ -133,16 +131,16 @@ impl BusConnection {
         &self.connection_type
     }
 
-    pub fn subdomain(&self) -> &str {
-        &self.subdomain
+    pub fn node_name(&self) -> &str {
+        &self.node_name
     }
 
     pub fn port(&self) -> u16 {
         self.port
     }
 
-    pub fn set_subdomain(&mut self, subdomain: &str) {
-        self.subdomain = subdomain.to_string();
+    pub fn set_node_name(&mut self, node_name: &str) {
+        self.node_name = node_name.to_string();
     }
 }
 
@@ -298,8 +296,8 @@ impl Config {
         for domain_conf in domains {
             let name = self.get_yaml_string_at(&domain_conf, "name")?;
 
-            let private_hash = &domain_conf["private"];
-            let public_hash = &domain_conf["public"];
+            let private_hash = &domain_conf["private_node"];
+            let public_hash = &domain_conf["public_node"];
 
             let mut private_services: Option<Vec<String>> = None;
             let mut public_services: Option<Vec<String>> = None;
@@ -320,14 +318,13 @@ impl Config {
                 }
             }
 
-
-            let private = BusSubDomain {
+            let private_node = BusNode {
                 name: self.get_yaml_string_at(&private_hash, "name")?,
                 port: DEFAULT_BUS_PORT,
                 allowed_services: private_services,
             };
 
-            let public = BusSubDomain {
+            let public_node = BusNode {
                 name: self.get_yaml_string_at(&public_hash, "name")?,
                 port: DEFAULT_BUS_PORT,
                 allowed_services: public_services,
@@ -335,8 +332,8 @@ impl Config {
 
             let domain = BusDomain {
                 name: name.to_string(),
-                private,
-                public,
+                private_node,
+                public_node,
             };
 
             self.domains.push(domain);
@@ -356,7 +353,7 @@ impl Config {
 
         for (name, connection) in hash {
             let name = self.unpack_yaml_string(name)?;
-            let subdomain_type = self.get_yaml_string_at(&connection, "subdomain")?;
+            let node_type = self.get_yaml_string_at(&connection, "node_type")?;
             let creds_name = self.get_yaml_string_at(&connection, "credentials")?;
 
             let creds = match self.credentials.get(&creds_name) {
@@ -382,7 +379,7 @@ impl Config {
             }
 
             let con = BusConnectionType {
-                subdomain_type: (&subdomain_type).into(),
+                node_type: (&node_type).into(),
                 credentials: creds.clone(),
                 log_level: level,
                 syslog_facility: facility,
@@ -418,14 +415,14 @@ impl Config {
             }
         };
 
-        let subdomain = match con_type.subdomain_type() {
-            BusSubDomainType::Private => bus_domain.private(),
-            _ => bus_domain.public(),
+        let node = match con_type.node_type() {
+            BusNodeType::Private => bus_domain.private_node(),
+            _ => bus_domain.public_node(),
         };
 
         Ok(BusConnection {
-            port: subdomain.port(),
-            subdomain: subdomain.name().to_string(),
+            port: node.port(),
+            node_name: node.name().to_string(),
             connection_type: con_type.clone(),
         })
     }
@@ -434,14 +431,14 @@ impl Config {
         self.domains.iter().filter(|d| d.name().eq(domain)).next()
     }
 
-    /// Returns Option of ref to a BusSubDomain by name.
-    pub fn get_subdomain(&self, subdomain: &str) -> Option<&BusSubDomain> {
+    /// Returns Option of ref to a BusNode by name.
+    pub fn get_node(&self, node_name: &str) -> Option<&BusNode> {
         for domain in self.domains().iter() {
-            if domain.private().name().eq(subdomain) {
-                return Some(domain.private());
+            if domain.private_node().name().eq(node_name) {
+                return Some(domain.private_node());
             }
-            if domain.public().name().eq(subdomain) {
-                return Some(domain.public());
+            if domain.public_node().name().eq(node_name) {
+                return Some(domain.public_node());
             }
         }
 

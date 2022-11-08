@@ -21,16 +21,16 @@ pub trait DataSerializer {
 }
 
 /// Generally speaking, we only need 1 ClientSingleton per thread (hence
-/// the name).  This manages one bus connection per subdomain and stores
+/// the name).  This manages one bus connection per node and stores
 /// messages pulled from the bus that have not yet been processed by
 /// higher-up modules.
 pub struct ClientSingleton {
     bus: bus::Bus,
 
-    /// Our primary subdomain
-    subdomain: String,
+    /// Our primary node
+    node_name: String,
 
-    /// Connections to remote subdomains.
+    /// Connections to remote nodes
     remote_bus_map: HashMap<String, bus::Bus>,
 
     config: Arc<conf::Config>,
@@ -54,11 +54,11 @@ impl ClientSingleton {
         };
 
         let bus = bus::Bus::new(&con)?;
-        let subdomain = con.subdomain().to_string();
+        let node_name = con.node_name().to_string();
 
         Ok(ClientSingleton {
             config,
-            subdomain,
+            node_name,
             bus: bus,
             backlog: Vec::new(),
             remote_bus_map: HashMap::new(),
@@ -79,9 +79,9 @@ impl ClientSingleton {
         self.bus.address().full()
     }
 
-    /// Our primary bus subdomain
-    fn subdomain(&self) -> &str {
-        &self.subdomain
+    /// Our primary bus node_name
+    fn node_name(&self) -> &str {
+        &self.node_name
     }
 
     pub fn bus(&self) -> &bus::Bus {
@@ -92,40 +92,40 @@ impl ClientSingleton {
         &mut self.bus
     }
 
-    pub fn get_subdomain_bus(&mut self, subdomain: &str) -> Result<&mut bus::Bus, String> {
-        log::trace!("Loading bus connection for subdomain: {subdomain}");
+    pub fn get_node_bus(&mut self, node_name: &str) -> Result<&mut bus::Bus, String> {
+        log::trace!("Loading bus connection for node_name: {node_name}");
 
-        if subdomain.eq(self.subdomain()) {
+        if node_name.eq(self.node_name()) {
             Ok(&mut self.bus)
         } else {
-            if self.remote_bus_map.contains_key(subdomain) {
-                return Ok(self.remote_bus_map.get_mut(subdomain).unwrap());
+            if self.remote_bus_map.contains_key(node_name) {
+                return Ok(self.remote_bus_map.get_mut(node_name).unwrap());
             }
 
-            self.add_connection(subdomain)
+            self.add_connection(node_name)
         }
     }
 
-    /// Add a connection to a new remote subdomain.
+    /// Add a connection to a new remote node.
     ///
-    /// Panics if our configuration has no primary subdomain.
-    fn add_connection(&mut self, subdomain: &str) -> Result<&mut bus::Bus, String> {
-        // When adding a connection to a remote subdomain, assume the same
-        // connection type, etc. is used and just change the subdomain.
+    /// Panics if our configuration has no primary node.
+    fn add_connection(&mut self, node_name: &str) -> Result<&mut bus::Bus, String> {
+        // When adding a connection to a remote node, assume the same
+        // connection type, etc. is used and just change the node.
         let mut con = self.config.primary_connection().unwrap().clone();
 
-        if self.config.get_subdomain(subdomain).is_none() {
-            return Err(format!("No configuration for subdomain: {subdomain}"));
+        if self.config.get_node(node_name).is_none() {
+            return Err(format!("No configuration for node: {node_name}"));
         };
 
-        con.set_subdomain(subdomain);
+        con.set_node_name(node_name);
 
         let bus = bus::Bus::new(&con)?;
 
-        info!("Opened connection to new subdomain: {}", subdomain);
+        info!("Opened connection to new node: {}", node_name);
 
-        self.remote_bus_map.insert(subdomain.to_string(), bus);
-        self.get_subdomain_bus(subdomain)
+        self.remote_bus_map.insert(node_name.to_string(), bus);
+        self.get_node_bus(node_name)
     }
 
     /// Returns the first transport message pulled from the transport
@@ -167,12 +167,12 @@ impl ClientSingleton {
 
     fn send_router_command(
         &mut self,
-        subdomain: &str,
+        node_name: &str,
         router_command: &str,
         router_class: Option<&str>,
         await_reply: bool,
     ) -> Result<Option<JsonValue>, String> {
-        let addr = RouterAddress::new(subdomain);
+        let addr = RouterAddress::new(node_name);
 
         // Always use the address of our primary Bus
         let mut tmsg = message::TransportMessage::new(
@@ -186,7 +186,7 @@ impl ClientSingleton {
             tmsg.set_router_class(rc);
         }
 
-        let bus = self.get_subdomain_bus(subdomain)?;
+        let bus = self.get_node_bus(node_name)?;
         bus.send(&tmsg)?;
 
         if !await_reply {
@@ -237,7 +237,7 @@ impl fmt::Display for ClientSingleton {
 pub struct Client {
     singleton: Rc<RefCell<ClientSingleton>>,
     address: ClientAddress,
-    subdomain: String,
+    node_name: String,
 }
 
 impl Client {
@@ -247,11 +247,11 @@ impl Client {
         let singleton = ClientSingleton::new(config)?;
 
         let address = singleton.bus().address().clone();
-        let subdomain = singleton.subdomain().to_string();
+        let node_name = singleton.node_name().to_string();
 
         Ok(Client {
             address,
-            subdomain,
+            node_name,
             singleton: Rc::new(RefCell::new(singleton)),
         })
     }
@@ -263,7 +263,7 @@ impl Client {
     pub fn clone(&self) -> Self {
         Client {
             address: self.address().clone(),
-            subdomain: self.subdomain().to_string(),
+            node_name: self.node_name().to_string(),
             singleton: self.singleton().clone()
         }
     }
@@ -276,8 +276,8 @@ impl Client {
         &self.address
     }
 
-    pub fn subdomain(&self) -> &str {
-        &self.subdomain
+    pub fn node_name(&self) -> &str {
+        &self.node_name
     }
 
     /// Create a new client session for the requested service.
@@ -298,14 +298,14 @@ impl Client {
 
     pub fn send_router_command(
         &self,
-        subdomain: &str,
+        node_name: &str,
         command: &str,
         router_class: Option<&str>,
         await_reply: bool,
     ) -> Result<Option<JsonValue>, String> {
         self.singleton()
             .borrow_mut()
-            .send_router_command(subdomain, command, router_class, await_reply)
+            .send_router_command(node_name, command, router_class, await_reply)
     }
 
     /// Send a request and receive a ResponseIterator for iterating

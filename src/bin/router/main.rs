@@ -12,7 +12,7 @@ use getopts::Options;
 /// A service controller.
 ///
 /// This is what we traditionally call a "Listener" in OpenSRF.
-/// A service can have multiple controllers on a single subdomain.
+/// A service can have multiple controllers on a single node_name.
 #[derive(Debug, Clone)]
 struct ServiceInstance {
     address: ClientAddress,
@@ -84,25 +84,25 @@ impl ServiceEntry {
     }
 }
 
-/// One subdomain entry.
+/// One node_name entry.
 ///
-/// A subdomain will typically host multiple services.
+/// A node_name will typically host multiple services.
 /// E.g. "public.localhost"
-struct RouterDomain {
+struct RouterNode {
     // e.g. public.localhost
-    subdomain: String,
+    node_name: String,
 
-    /// Bus connection to the redis instance for this subdomain.
+    /// Bus connection to the redis instance for this node_name.
     ///
     /// A connection is only opened when needed.  Once opened, it's left
     /// open until the connection is shut down on the remote end.
     bus: Option<Bus>,
 
-    /// How many requests have been routed to this subdomain.
+    /// How many requests have been routed to this node_name.
     ///
-    /// We count subdomain-level routing instead of service controller-level
+    /// We count node_name-level routing instead of service controller-level
     /// routing, since we can't guarantee which service controller will
-    /// pick up any given request routed to a subdomain.
+    /// pick up any given request routed to a node_name.
     route_count: usize,
 
     services: Vec<ServiceEntry>,
@@ -110,10 +110,10 @@ struct RouterDomain {
     config: conf::BusConnection,
 }
 
-impl RouterDomain {
+impl RouterNode {
     fn new(config: &conf::BusConnection) -> Self {
-        RouterDomain {
-            subdomain: config.subdomain().to_string(),
+        RouterNode {
+            node_name: config.node_name().to_string(),
             bus: None,
             route_count: 0,
             services: Vec::new(),
@@ -121,8 +121,8 @@ impl RouterDomain {
         }
     }
 
-    fn subdomain(&self) -> &str {
-        &self.subdomain
+    fn node_name(&self) -> &str {
+        &self.node_name
     }
 
     fn bus(&self) -> Option<&Bus> {
@@ -165,7 +165,7 @@ impl RouterDomain {
 
     fn to_json_value(&self) -> json::JsonValue {
         json::object! {
-            subdomain: json::from(self.subdomain()),
+            node_name: json::from(self.node_name()),
             route_count: json::from(self.route_count()),
             services: json::from(self.services().iter()
                 .map(|s| s.to_json_value()).collect::<Vec<json::JsonValue>>()
@@ -173,7 +173,7 @@ impl RouterDomain {
         }
     }
 
-    /// Connect to the Redis instance on this subdomain.
+    /// Connect to the Redis instance on this node_name.
     fn connect(&mut self) -> Result<(), String> {
         if self.bus.is_some() {
             return Ok(());
@@ -189,18 +189,18 @@ impl RouterDomain {
         Ok(())
     }
 
-    /// Send a message to this subdomain via our subdomain connection.
-    fn send_to_domain(&mut self, tm: TransportMessage) -> Result<(), String> {
+    /// Send a message to this node_name via our node_name connection.
+    fn send_to_node(&mut self, tm: TransportMessage) -> Result<(), String> {
         trace!(
-            "send_to_domain({}) routing message to {}",
-            self.subdomain(),
+            "send_to_node({}) routing message to {}",
+            self.node_name(),
             tm.to()
         );
 
         let bus = match &mut self.bus {
             Some(b) => b,
             None => {
-                return Err(format!("We have no connection to subdomain {}", self.subdomain()));
+                return Err(format!("We have no connection to node_name {}", self.node_name()));
             }
         };
 
@@ -209,13 +209,13 @@ impl RouterDomain {
 }
 
 struct Router {
-    /// Primary subdomain for this router instance.
-    primary_domain: RouterDomain,
+    /// Primary node_name for this router instance.
+    primary_node: RouterNode,
 
     /// Well-known address where top-level API calls should be routed.
     listen_address: RouterAddress,
 
-    remote_domains: Vec<RouterDomain>,
+    remote_nodes: Vec<RouterNode>,
 
     config: conf::Config,
 }
@@ -223,30 +223,30 @@ struct Router {
 impl Router {
     pub fn new(config: conf::Config) -> Self {
         let busconf = config.primary_connection().unwrap();
-        let subdomain = busconf.subdomain().to_string();
-        let addr = RouterAddress::new(&subdomain);
-        let primary_domain = RouterDomain::new(&busconf);
+        let node_name = busconf.node_name().to_string();
+        let addr = RouterAddress::new(&node_name);
+        let primary_node = RouterNode::new(&busconf);
 
         Router {
             config,
-            primary_domain,
+            primary_node,
             listen_address: addr,
-            remote_domains: Vec::new(),
+            remote_nodes: Vec::new(),
         }
     }
 
     fn init(&mut self) -> Result<(), String> {
-        self.primary_domain.connect()?;
+        self.primary_node.connect()?;
         self.setup_stream()?;
         Ok(())
     }
 
-    fn primary_domain(&self) -> &RouterDomain {
-        &self.primary_domain
+    fn primary_node(&self) -> &RouterNode {
+        &self.primary_node
     }
 
-    fn remote_domains(&self) -> &Vec<RouterDomain> {
-        &self.remote_domains
+    fn remote_nodes(&self) -> &Vec<RouterNode> {
+        &self.remote_nodes
     }
 
     /// Setup the Redis stream/group we listen to
@@ -256,9 +256,9 @@ impl Router {
         info!("Setting up primary stream={sname}");
 
         let bus = &mut self
-            .primary_domain
+            .primary_node
             .bus_mut()
-            .expect("Primary subdomain must have a bus");
+            .expect("Primary node_name must have a bus");
 
         bus.delete_named_stream(sname)?;
         bus.setup_stream(Some(sname))
@@ -267,70 +267,70 @@ impl Router {
     fn to_json_value(&self) -> json::JsonValue {
         json::object! {
             listen_address: json::from(self.listen_address.full()),
-            primary_domain: self.primary_domain().to_json_value(),
-            remote_domains: json::from(self.remote_domains().iter()
+            primary_node: self.primary_node().to_json_value(),
+            remote_nodes: json::from(self.remote_nodes().iter()
                 .map(|s| s.to_json_value()).collect::<Vec<json::JsonValue>>()
             )
         }
     }
 
-    /// Find or create a new RouterDomain entry.
-    fn find_or_create_subdomain(&mut self, subdomain: &str) -> Result<&mut RouterDomain, String> {
-        if self.primary_domain.subdomain.eq(subdomain) {
-            return Ok(&mut self.primary_domain);
+    /// Find or create a new RouterNode entry.
+    fn find_or_create_node_name(&mut self, node_name: &str) -> Result<&mut RouterNode, String> {
+        if self.primary_node.node_name.eq(node_name) {
+            return Ok(&mut self.primary_node);
         }
 
-        let mut pos_op = self.remote_domains.iter().position(|d| d.subdomain.eq(subdomain));
+        let mut pos_op = self.remote_nodes.iter().position(|d| d.node_name.eq(node_name));
 
         if pos_op.is_none() {
-            debug!("Adding new RouterDomain for subdomain={}", subdomain);
+            debug!("Adding new RouterNode for node_name={}", node_name);
 
             // Primary connection is required at this point.
             let mut busconf = self.config.primary_connection().unwrap().clone();
 
-            if self.config.get_subdomain(subdomain).is_some() {
-                busconf.set_subdomain(subdomain);
+            if self.config.get_node(node_name).is_some() {
+                busconf.set_node_name(node_name);
             } else {
-                return Err(format!("Cannot route to unknown subdomain: {subdomain}"));
+                return Err(format!("Cannot route to unknown node_name: {node_name}"));
             }
 
-            self.remote_domains.push(RouterDomain::new(&busconf));
+            self.remote_nodes.push(RouterNode::new(&busconf));
 
-            pos_op = Some(self.remote_domains.len() - 1);
+            pos_op = Some(self.remote_nodes.len() - 1);
         }
 
         // Here the position is known to have data.
-        Ok(self.remote_domains.get_mut(pos_op.unwrap()).unwrap())
+        Ok(self.remote_nodes.get_mut(pos_op.unwrap()).unwrap())
     }
 
     fn handle_unregister(&mut self, address: &ClientAddress, service: &str) -> Result<(), String> {
-        let subdomain = address.domain();
+        let node_name = address.domain();
 
         info!(
-            "De-registering subdomain={} service={} address={}",
-            subdomain, service, address
+            "De-registering node_name={} service={} address={}",
+            node_name, service, address
         );
 
-        if self.primary_domain.subdomain.eq(subdomain) {
-            // When removing a service from the primary subdomain, leave the
-            // subdomain as a whole intact since we'll likely need it again.
+        if self.primary_node.node_name.eq(node_name) {
+            // When removing a service from the primary node_name, leave the
+            // node_name as a whole intact since we'll likely need it again.
             // Remove services and controllers as necessary, though.
 
-            self.primary_domain.remove_service(service, &address);
+            self.primary_node.remove_service(service, &address);
             return Ok(());
         }
 
-        // When removing the last service from a remote subdomain, remove
-        // the subdomain entry as a whole.
+        // When removing the last service from a remote node_name, remove
+        // the node_name entry as a whole.
         let mut rem_pos_op: Option<usize> = None;
         let mut idx = 0;
 
-        for r_domain in &mut self.remote_domains {
-            if r_domain.subdomain().eq(subdomain) {
-                r_domain.remove_service(service, address);
-                if r_domain.services.len() == 0 {
+        for r_node in &mut self.remote_nodes {
+            if r_node.node_name().eq(node_name) {
+                r_node.remove_service(service, address);
+                if r_node.services.len() == 0 {
                     // Cannot remove here since it would be modifying
-                    // self.remote_domains while it's aready mutably borrowed.
+                    // self.remote_nodes while it's aready mutably borrowed.
                     rem_pos_op = Some(idx);
                 }
                 break;
@@ -339,37 +339,37 @@ impl Router {
         }
 
         if let Some(pos) = rem_pos_op {
-            debug!("Removing cleared subdomain entry for subdomain={}", subdomain);
-            self.remote_domains.remove(pos);
+            debug!("Removing cleared node_name entry for node_name={}", node_name);
+            self.remote_nodes.remove(pos);
         }
 
         Ok(())
     }
 
     fn handle_register(&mut self, address: ClientAddress, service: &str) -> Result<(), String> {
-        let subdomain = address.domain(); // Known to be a client addr.
+        let node_name = address.domain(); // Known to be a client addr.
 
-        info!("Registering new subdomain={}", subdomain);
+        info!("Registering new node_name={}", node_name);
 
-        let r_domain = self.find_or_create_subdomain(subdomain)?;
+        let r_node = self.find_or_create_node_name(node_name)?;
 
-        for svc in &mut r_domain.services {
-            // See if we have a ServiceEntry for this service on this subdomain.
+        for svc in &mut r_node.services {
+            // See if we have a ServiceEntry for this service on this node_name.
 
             if svc.name.eq(service) {
                 for controller in &mut svc.controllers {
                     if controller.address.full().eq(address.full()) {
                         warn!(
-                            "Controller with address {} already registered for service {} and subdomain {}",
-                            address, service, subdomain
+                            "Controller with address {} already registered for service {} and node_name {}",
+                            address, service, node_name
                         );
                         return Ok(());
                     }
                 }
 
                 debug!(
-                    "Adding new ServiceInstance subdomain={} service={} address={}",
-                    subdomain, service, address
+                    "Adding new ServiceInstance node_name={} service={} address={}",
+                    node_name, service, address
                 );
 
                 svc.controllers.push(ServiceInstance {
@@ -381,15 +381,15 @@ impl Router {
             }
         }
 
-        // We have no Service Entry for this subdomain+service+address.
+        // We have no Service Entry for this node_name+service+address.
         // Add a ServiceEntry and a new ServiceInstance
 
         debug!(
-            "Adding new ServiceEntry subdomain={} service={} address={}",
-            subdomain, service, address
+            "Adding new ServiceEntry node_name={} service={} address={}",
+            node_name, service, address
         );
 
-        r_domain.services.push(ServiceEntry {
+        r_node.services.push(ServiceEntry {
             name: service.to_string(),
             controllers: vec![ServiceInstance {
                 address: address,
@@ -403,13 +403,13 @@ impl Router {
     /// List of currently active services by service name.
     fn _active_services(&self) -> Vec<&str> {
         let mut services: Vec<&str> = self
-            .primary_domain()
+            .primary_node()
             .services()
             .iter()
             .map(|s| s.name())
             .collect();
 
-        for d in self.remote_domains() {
+        for d in self.remote_nodes() {
             for s in d.services() {
                 if !services.contains(&s.name()) {
                     services.push(s.name());
@@ -422,7 +422,7 @@ impl Router {
 
     fn listen(&mut self) {
         // Listen for inbound requests / router commands on our primary
-        // subdomain and route accordingly.
+        // node_name and route accordingly.
 
         loop {
             let tm = match self.recv_one() {
@@ -466,27 +466,27 @@ impl Router {
     ) -> Result<(), String> {
         let service = to_addr.service();
 
-        if self.primary_domain.has_service(service) {
-            self.primary_domain.route_count += 1;
-            return self.primary_domain.send_to_domain(tm);
+        if self.primary_node.has_service(service) {
+            self.primary_node.route_count += 1;
+            return self.primary_node.send_to_node(tm);
         }
 
-        for r_domain in &mut self.remote_domains {
-            if r_domain.has_service(service) {
-                if r_domain.bus.is_none() {
-                    // We only connect to remote subdomains when it's
+        for r_node in &mut self.remote_nodes {
+            if r_node.has_service(service) {
+                if r_node.bus.is_none() {
+                    // We only connect to remote node_names when it's
                     // time to send them a message.
-                    r_domain.connect()?;
+                    r_node.connect()?;
                 }
 
-                r_domain.route_count += 1;
-                return r_domain.send_to_domain(tm);
+                r_node.route_count += 1;
+                return r_node.send_to_node(tm);
             }
         }
 
         error!(
             "Router at {} has no service controllers for service {service}",
-            self.primary_domain.subdomain()
+            self.primary_node.node_name()
         );
 
         let payload = Payload::Status(Status::new(
@@ -503,7 +503,7 @@ impl Router {
             trace = tm.body()[0].thread_trace();
         }
 
-        let from = match self.primary_domain.bus() {
+        let from = match self.primary_node.bus() {
             Some(b) => b.address().full(),
             None => self.listen_address.full(),
         };
@@ -516,9 +516,9 @@ impl Router {
         );
 
         // Bounce-backs will always be directed back to a client
-        // on our primary subdomain, since clients only ever talk to
-        // the router on their own subdomain.
-        self.primary_domain.send_to_domain(tm)
+        // on our primary node_name, since clients only ever talk to
+        // the router on their own node_name.
+        self.primary_node.send_to_node(tm)
     }
 
     fn handle_router_command(&mut self, tm: TransportMessage) -> Result<(), String> {
@@ -579,23 +579,23 @@ impl Router {
         // Bounce the message back to the caller with the requested data.
         // Should our FROM address be our unique bus address or the router
         // address? Does it matter?
-        tm.set_from(self.primary_domain.bus().unwrap().address().full());
+        tm.set_from(self.primary_node.bus().unwrap().address().full());
         tm.set_to(from_addr.full());
 
-        let r_domain = self.find_or_create_subdomain(from_addr.domain())?;
+        let r_node = self.find_or_create_node_name(from_addr.domain())?;
 
-        if r_domain.bus.is_none() {
-            r_domain.connect()?;
+        if r_node.bus.is_none() {
+            r_node.connect()?;
         }
 
-        r_domain.send_to_domain(tm)
+        r_node.send_to_node(tm)
     }
 
     fn recv_one(&mut self) -> Result<TransportMessage, String> {
         let bus = self
-            .primary_domain
+            .primary_node
             .bus_mut()
-            .expect("We always maintain a connection on the primary subdomain");
+            .expect("We always maintain a connection on the primary node_name");
 
         loop {
             // Looping should not be required here, but can't hurt.
@@ -649,7 +649,7 @@ fn main() {
 
     Logger::new(&contype).init().unwrap();
 
-    // Each subdomain gets 1 router for each of its 2 public/private sudbomains.
+    // Each name gets 1 router for each of its 2 public/private sudbomains.
     // Each runs in its own thread.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
