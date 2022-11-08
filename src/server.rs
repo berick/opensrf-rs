@@ -1,3 +1,4 @@
+/*
 use super::app;
 use super::client::Client;
 use super::conf;
@@ -441,3 +442,4 @@ fn system_method_echo(
     }
     Ok(())
 }
+*/

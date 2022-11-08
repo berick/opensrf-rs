@@ -1,15 +1,19 @@
 use opensrf::logging::Logger;
 use opensrf::{Client, Config};
 
+/*
 const SERVICE: &str = "opensrf.rs-public";
 const METHOD: &str = "opensrf.rs-public.echo";
+*/
+const SERVICE: &str = "opensrf.settings";
+const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {
-    let mut conf = Config::from_file("conf/opensrf.yml")?;
-    let con = conf.set_primary_connection("service", "private.localhost")?;
 
-    let ct = con.connection_type();
-    Logger::new(ct.log_level(), ct.log_facility()).init().unwrap();
+    let mut conf = Config::from_file("/home/berick/code/OpenSRF/examples/opensrf_core.yml.example")?;
+    let con = conf.set_primary_connection("service", "localhost")?;
+
+    Logger::new(con.connection_type()).init().unwrap();
 
     let mut client = Client::connect(conf.to_shared())?;
 
@@ -48,6 +52,7 @@ fn main() -> Result<(), String> {
     // --------------------------------------------------------
     // ONE-OFF REQUEST WITH ITERATOR --------------------------
 
+    /*
     let params = vec!["Hello", "World", "Pamplemousse"];
 
     for resp in client.sendrecv(SERVICE, METHOD, params)? {
@@ -60,6 +65,7 @@ fn main() -> Result<(), String> {
             println!("Counter is {}", resp.dump());
         }
     }
+    */
 
     Ok(())
 }

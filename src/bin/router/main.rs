@@ -6,6 +6,8 @@ use opensrf::conf;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
 use opensrf::Logger;
 use std::thread;
+use std::env;
+use getopts::Options;
 
 /// A service controller.
 ///
@@ -111,7 +113,7 @@ struct RouterDomain {
 impl RouterDomain {
     fn new(config: &conf::BusConnection) -> Self {
         RouterDomain {
-            domain: config.domain().name().to_string(),
+            domain: config.active_subdomain().name().to_string(),
             bus: None,
             route_count: 0,
             services: Vec::new(),
@@ -221,7 +223,7 @@ struct Router {
 impl Router {
     pub fn new(config: conf::Config) -> Self {
         let busconf = config.primary_connection().unwrap();
-        let domain = busconf.domain().name();
+        let domain = busconf.active_subdomain().name();
         let addr = RouterAddress::new(domain);
         let primary_domain = RouterDomain::new(&busconf);
 
@@ -427,10 +429,10 @@ impl Router {
                 Ok(m) => m,
                 Err(s) => {
                     error!(
-                        "Error receiving data on our primary domain connection: {}",
+                        "Exiting on error receiving data from primary connection: {}",
                         s
                     );
-                    continue; // break and exit?
+                    return;
                 }
             };
 
@@ -482,7 +484,10 @@ impl Router {
             }
         }
 
-        error!("We have no service controllers for service {service}");
+        error!(
+            "Router at {} has no service controllers for service {service}",
+            self.primary_domain.domain()
+        );
 
         let payload = Payload::Status(Status::new(
             MessageStatus::ServiceNotFound,
@@ -605,27 +610,68 @@ impl Router {
 }
 
 fn main() {
-    let config = conf::Config::from_file("conf/opensrf.yml").unwrap();
-    let ct = config.get_connection_type("router").unwrap();
+    let args: Vec<String> = env::args().collect();
+    let mut opts = Options::new();
 
-    Logger::new(ct.log_level(), ct.log_facility())
-        .init()
-        .unwrap();
+    opts.optopt("h", "host", "Hostname", "HOSTNAME");
+    opts.optopt("d", "domain", "Domain", "DOMAIN");
+    opts.optflag("l", "localhost", "Use Localhost");
+    opts.optopt("c", "osrf-config", "OpenSRF Config", "OSRF_CONFIG");
 
-    // Each domain gets a router running in its own thread.
+    let params = match opts.parse(&args[1..]) {
+        Ok(p) => p,
+        Err(e) => {
+            println!("\n{e}\n{}", opts.usage("Usage: "));
+            return;
+        }
+    };
+
+    let conf_file = params.opt_get_default(
+        "osrf-config", "conf/opensrf_core.yml".to_string()).unwrap();
+
+    let config = conf::Config::from_file(&conf_file).unwrap();
+
+    let domain;
+
+    if let Some(d) = params.opt_str("domain") {
+        domain = d.to_string();
+    } else if params.opt_present("localhost") {
+        domain = "localhost".to_string();
+    } else {
+        eprintln!("Router requires --localhost or a --domain value");
+        return;
+    }
+
+    let contype = match config.get_connection_type("private_router") {
+        Some(c) => c,
+        None => panic!("No such connection type: private_router"),
+    };
+
+    Logger::new(&contype).init().unwrap();
+
+    // Each domain gets 1 router for each of its 2 public/private sudbomains.
+    // Each runs in its own thread.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
-    for domain in config.domains() {
-        let mut conf = config.clone();
-        conf.set_primary_connection("router", domain.name())
-            .unwrap();
+    // Private Router Thread ---
+    let mut conf = config.clone();
+    conf.set_primary_connection("private_router", &domain).unwrap();
 
-        threads.push(thread::spawn(|| {
-            let mut router = Router::new(conf);
-            router.init().unwrap();
-            router.listen();
-        }));
-    }
+	threads.push(thread::spawn(|| {
+		let mut router = Router::new(conf);
+		router.init().unwrap();
+		router.listen();
+	}));
+
+    // Public Router Thread ---
+    let mut conf = config.clone();
+    conf.set_primary_connection("public_router", &domain).unwrap();
+
+	threads.push(thread::spawn(|| {
+		let mut router = Router::new(conf);
+		router.init().unwrap();
+		router.listen();
+	}));
 
     // Block here while the routers are running.
     for thread in threads {

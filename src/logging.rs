@@ -4,6 +4,7 @@ use std::os::unix::net::UnixDatagram;
 use std::process;
 use syslog;
 use thread_id;
+use super::conf;
 
 const SYSLOG_UNIX_PATH: &str = "/dev/log";
 
@@ -17,17 +18,19 @@ const TRIM_THREAD_ID: usize = 5;
 /// NOTE this logs directly to the syslog UNIX path instead of going through
 /// the syslog crate.  This approach gives us much more control.
 pub struct Logger {
+    logfile: conf::LogFile,
     loglevel: log::LevelFilter,
-    facility: syslog::Facility,
+    facility: Option<syslog::Facility>,
     writer: Option<UnixDatagram>,
     application: String,
 }
 
 impl Logger {
-    pub fn new(loglevel: log::LevelFilter, facility: syslog::Facility) -> Self {
+    pub fn new(con_type: &conf::BusConnectionType) -> Self {
         Logger {
-            loglevel,
-            facility,
+            logfile: con_type.log_file().clone(),
+            loglevel: con_type.log_level(),
+            facility: con_type.syslog_facility(),
             writer: None,
             application: Logger::find_app_name(),
         }
@@ -55,7 +58,7 @@ impl Logger {
     }
 
     pub fn set_facility(&mut self, facility: syslog::Facility) {
-        self.facility = facility
+        self.facility = Some(facility);
     }
 
     /// Setup our global log handler.
@@ -84,7 +87,10 @@ impl Logger {
     ///
     /// Essentially copied from the syslog crate.
     fn encode_priority(&self, severity: syslog::Severity) -> syslog::Priority {
-        self.facility as u8 | severity as u8
+        if let Some(f) = self.facility {
+            return f as u8 | severity as u8;
+        }
+        panic!("Direct logging to a file not yet supported");
     }
 }
 
@@ -105,12 +111,14 @@ impl log::Log for Logger {
             record.module_path().unwrap_or_default()
         };
 
-        let severity = self.encode_priority(match levelname.to_lowercase().as_str() {
-            "debug" | "trace" => syslog::Severity::LOG_DEBUG,
-            "info" => syslog::Severity::LOG_INFO,
-            "warn" => syslog::Severity::LOG_WARNING,
-            _ => syslog::Severity::LOG_ERR,
-        });
+        let severity = self.encode_priority(
+            match levelname.to_lowercase().as_str() {
+                "debug" | "trace" => syslog::Severity::LOG_DEBUG,
+                "info" => syslog::Severity::LOG_INFO,
+                "warn" => syslog::Severity::LOG_WARNING,
+                _ => syslog::Severity::LOG_ERR,
+            }
+        );
 
         let mut tid: String = thread_id::get().to_string();
         if tid.len() > TRIM_THREAD_ID {

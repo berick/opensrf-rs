@@ -165,7 +165,6 @@ impl Session {
         &self.service_addr
     }
 
-
     /// Mutable Ref to our under-the-covers client singleton.
     fn client_internal_mut(&self) -> RefMut<ClientSingleton> {
         self.client.singleton().borrow_mut()

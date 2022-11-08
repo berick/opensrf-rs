@@ -54,7 +54,7 @@ impl ClientSingleton {
         };
 
         let bus = bus::Bus::new(&con)?;
-        let domain = con.domain().name().to_string();
+        let domain = con.active_subdomain().name().to_string();
 
         Ok(ClientSingleton {
             config,

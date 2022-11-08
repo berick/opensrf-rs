@@ -1,3 +1,4 @@
+/*
 use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use opensrf::client;
 use opensrf::conf;
@@ -152,8 +153,8 @@ fn main() {
     let app = RsPrivateApplication::new();
 
     let mut server = server::Server::new(
-        "private.localhost", // TODO command line
-        conf::Config::from_file("conf/opensrf.yml").unwrap(),
+        "localhost", // TODO command line
+        conf::Config::from_file("conf/opensrf_core.yml").unwrap(),
         Box::new(app),
     );
 
@@ -213,3 +214,6 @@ fn sleep(
 
     Ok(())
 }
+*/
+
+fn main() {}

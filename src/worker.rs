@@ -1,3 +1,4 @@
+/*
 use super::addr::{ClientAddress, ServiceAddress};
 use super::app;
 use super::client::{ClientSingleton, Client};
@@ -430,3 +431,4 @@ impl Worker {
         })
     }
 }
+*/

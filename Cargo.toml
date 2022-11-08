@@ -17,6 +17,7 @@ gethostname = "0.2.3"
 threadpool = "1.8.1"
 regex = "1.6"
 signal-hook = "0.3.14"
+getopts = "0.2.21"
 
 [[bin]]
 name = "router"
