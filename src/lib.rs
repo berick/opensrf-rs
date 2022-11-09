@@ -30,7 +30,7 @@ const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.yml";
 ///
 /// This does not connect to the bus.
 pub fn init(connection_type: &str) -> Result<conf::Config, String> {
-    let (config, params) =
+    let (config, _) =
         init_with_options(connection_type, &mut getopts::Options::new())?;
     Ok(config)
 }
@@ -82,7 +82,7 @@ pub fn init_with_options(
     // At this point, we know connection_type is valid.
     let contype = config.get_connection_type(connection_type).unwrap();
 
-    if let Err(e) = Logger::new(&contype).init() {
+    if let Err(e) = Logger::new(contype.logging())?.init() {
         return Err(format!("Error initializing logger: {e}"));
     }
 

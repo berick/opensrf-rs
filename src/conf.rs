@@ -89,13 +89,34 @@ pub enum LogFile {
 }
 
 #[derive(Debug, Clone)]
+pub struct LogOptions {
+    log_level: Option<log::LevelFilter>,
+    log_file: Option<LogFile>,
+    syslog_facility: Option<syslog::Facility>,
+    activity_log_facility: Option<syslog::Facility>,
+}
+
+impl LogOptions {
+    pub fn syslog_facility(&self) -> Option<syslog::Facility> {
+        self.syslog_facility
+    }
+    pub fn activity_log_facility(&self) -> Option<syslog::Facility> {
+        self.activity_log_facility
+    }
+    pub fn log_file(&self) -> &Option<LogFile> {
+        &self.log_file
+    }
+    pub fn log_level(&self) -> &Option<log::LevelFilter> {
+        &self.log_level
+    }
+}
+
+
+#[derive(Debug, Clone)]
 pub struct BusConnectionType {
     node_type: BusNodeType,
     credentials: BusCredentials,
-    log_level: log::LevelFilter,
-    log_file: LogFile,
-    syslog_facility: Option<syslog::Facility>,
-    activity_log_facility: Option<syslog::Facility>,
+    logging: LogOptions,
 }
 
 impl BusConnectionType {
@@ -105,17 +126,8 @@ impl BusConnectionType {
     pub fn credentials(&self) -> &BusCredentials {
         &self.credentials
     }
-    pub fn log_level(&self) -> log::LevelFilter {
-        self.log_level
-    }
-    pub fn syslog_facility(&self) -> Option<syslog::Facility> {
-        self.syslog_facility
-    }
-    pub fn activity_log_facility(&self) -> Option<syslog::Facility> {
-        self.activity_log_facility
-    }
-    pub fn log_file(&self) -> &LogFile {
-        &self.log_file
+    pub fn logging(&self) -> &LogOptions {
+        &self.logging
     }
 }
 
@@ -153,6 +165,7 @@ pub struct Config {
     domains: Vec<BusDomain>,
     service_groups: HashMap<String, Vec<String>>,
     log_protect: Vec<String>,
+    log_defaults: Option<LogOptions>,
     primary_connection: Option<BusConnection>,
     source: Option<yaml::Yaml>,
 }
@@ -165,6 +178,10 @@ impl Config {
     /// Ref to the YAML structure whence we extracted our config values.
     pub fn source(&self) -> Option<&yaml::Yaml> {
         self.source.as_ref()
+    }
+
+    pub fn log_defaults(&self) -> Option<&LogOptions> {
+        self.log_defaults.as_ref()
     }
 
     pub fn domains(&self) -> &Vec<BusDomain> {
@@ -201,12 +218,16 @@ impl Config {
             domains: Vec::new(),
             service_groups: HashMap::new(),
             log_protect: Vec::new(),
+            log_defaults: None,
             primary_connection: None,
             source: None,
         };
 
         conf.apply_service_groups(&root["service_groups"])?;
-        conf.apply_message_bus_config(&root)?;
+        conf.apply_log_defaults(&root["log_defaults"])?;
+        conf.apply_credentials(&root["credentials"])?;
+        conf.apply_domains(&root["domains"])?;
+        conf.apply_connections(&root["connections"])?;
 
         if let Some(arr) = root["log_protect"].as_vec() {
             for lp in arr {
@@ -241,19 +262,59 @@ impl Config {
         self.unpack_yaml_string(&thing[key])
     }
 
-    fn apply_message_bus_config(&mut self, bus_conf: &yaml::Yaml) -> Result<(), String> {
-        self.apply_credentials(&bus_conf["credentials"])?;
-        self.apply_domains(&bus_conf["domains"])?;
-        self.apply_connections(&bus_conf["connections"])?;
-
+    fn apply_log_defaults(&mut self, options: &yaml::Yaml) -> Result<(), String> {
+        self.log_defaults = Some(self.build_log_config(options)?);
         Ok(())
+    }
+
+    fn build_log_config(&mut self, log_config: &yaml::Yaml) -> Result<LogOptions, String> {
+
+
+        let mut options = LogOptions {
+            log_level: None,
+            syslog_facility: None,
+            activity_log_facility: None,
+            log_file: None,
+        };
+
+        let stub = options.clone();
+        let defaults = self.log_defaults().unwrap_or(&stub);
+
+        if let Some(file) = log_config["log_file"].as_str() {
+            options.log_file = match file {
+                "syslog" => Some(LogFile::Syslog),
+                _ => Some(LogFile::Filename(file.to_string()))
+            };
+        } else {
+            options.log_file = defaults.log_file().clone();
+        }
+
+        if let Some(level) = log_config["log_level"].as_str() {
+            options.log_level = Some(log::LevelFilter::from_str(&level).unwrap());
+        } else {
+            options.log_level = defaults.log_level().clone();
+        }
+
+        if let Some(f) = &log_config["syslog_facility"].as_str() {
+            options.syslog_facility = Some(syslog::Facility::from_str(&f).unwrap());
+        } else {
+            options.syslog_facility = defaults.syslog_facility().clone();
+        }
+
+        if let Some(f) = &log_config["activity_log_facility"].as_str() {
+            options.activity_log_facility = Some(syslog::Facility::from_str(&f).unwrap());
+        } else {
+            options.activity_log_facility = defaults.activity_log_facility().clone();
+        }
+
+        Ok(options)
     }
 
     fn apply_service_groups(&mut self, groups: &yaml::Yaml) -> Result<(), String> {
         let hash = match groups.as_hash() {
             Some(h) => h,
             None => {
-                log::warn!("Expectee service groups to be a hash: {groups:?}");
+                log::warn!("Expected service groups to be a hash: {groups:?}");
                 return Ok(());
             }
         };
@@ -287,112 +348,101 @@ impl Config {
     }
 
     fn apply_domains(&mut self, domains: &yaml::Yaml) -> Result<(), String> {
-        let domains = match domains.as_vec() {
-            Some(d) => d,
-            None => {
-                return Err(format!("message-bus 'domains' should be a list"));
+
+        if let Some(domains) = domains.as_vec() {
+            for domain_conf in domains {
+                let name = self.get_yaml_string_at(&domain_conf, "name")?;
+                self.add_domain(name, &domain_conf)?;
             }
+
+            return Ok(());
+        }
+
+        return Err(format!("message-bus 'domains' should be a list"));
+    }
+
+    fn add_domain(&mut self, name: String, domain_conf: &yaml::Yaml) -> Result<(), String> {
+
+        let private_hash = &domain_conf["private_node"];
+        let public_hash = &domain_conf["public_node"];
+
+        let mut private_services: Option<Vec<String>> = None;
+        let mut public_services: Option<Vec<String>> = None;
+
+        if let Some(group) = private_hash["allowed_services"].as_str() {
+            if let Some(list) = self.service_groups.get(group) {
+                private_services = Some(list.clone());
+            } else {
+                return Err(format!("No such service group: {group}"));
+            }
+        }
+
+        if let Some(group) = public_hash["allowed_services"].as_str() {
+            if let Some(list) = self.service_groups.get(group) {
+                public_services = Some(list.clone());
+            } else {
+                return Err(format!("No such service group: {group}"));
+            }
+        }
+
+        let private_node = BusNode {
+            name: self.get_yaml_string_at(&private_hash, "name")?,
+            port: DEFAULT_BUS_PORT,
+            allowed_services: private_services,
         };
 
-        for domain_conf in domains {
-            let name = self.get_yaml_string_at(&domain_conf, "name")?;
+        let public_node = BusNode {
+            name: self.get_yaml_string_at(&public_hash, "name")?,
+            port: DEFAULT_BUS_PORT,
+            allowed_services: public_services,
+        };
 
-            let private_hash = &domain_conf["private_node"];
-            let public_hash = &domain_conf["public_node"];
+        let domain = BusDomain {
+            name: name.to_string(),
+            private_node,
+            public_node,
+        };
 
-            let mut private_services: Option<Vec<String>> = None;
-            let mut public_services: Option<Vec<String>> = None;
-
-            if let Some(group) = private_hash["allowed_services"].as_str() {
-                if let Some(list) = self.service_groups.get(group) {
-                    private_services = Some(list.clone());
-                } else {
-                    return Err(format!("No such service group: {group}"));
-                }
-            }
-
-            if let Some(group) = public_hash["allowed_services"].as_str() {
-                if let Some(list) = self.service_groups.get(group) {
-                    public_services = Some(list.clone());
-                } else {
-                    return Err(format!("No such service group: {group}"));
-                }
-            }
-
-            let private_node = BusNode {
-                name: self.get_yaml_string_at(&private_hash, "name")?,
-                port: DEFAULT_BUS_PORT,
-                allowed_services: private_services,
-            };
-
-            let public_node = BusNode {
-                name: self.get_yaml_string_at(&public_hash, "name")?,
-                port: DEFAULT_BUS_PORT,
-                allowed_services: public_services,
-            };
-
-            let domain = BusDomain {
-                name: name.to_string(),
-                private_node,
-                public_node,
-            };
-
-            self.domains.push(domain);
-        }
+        self.domains.push(domain);
 
         Ok(())
     }
 
     fn apply_connections(&mut self, connections: &yaml::Yaml) -> Result<(), String> {
 
-        let hash = match connections.as_hash() {
-            Some(h) => h,
+        if let Some(hash) = connections.as_hash() {
+            for (name, connection) in hash {
+                let name = self.unpack_yaml_string(name)?;
+                self.add_connection(name, &connection)?;
+            }
+
+            return Ok(());
+        }
+
+        return Err(format!("We have no connections!"));
+    }
+
+    fn add_connection(&mut self, name: String, connection: &yaml::Yaml) -> Result<(), String> {
+        let node_type = self.get_yaml_string_at(&connection, "node_type")?;
+
+        // TODO merge log defaults
+        let log_config = self.build_log_config(&connection)?;
+
+        let creds_name = self.get_yaml_string_at(&connection, "credentials")?;
+        let creds = match self.credentials.get(&creds_name) {
+            Some(a) => a,
             None => {
-                return Err(format!("We have no connections!"));
+                return Err(format!("No such credentials: {name}"));
             }
         };
 
-        for (name, connection) in hash {
-            let name = self.unpack_yaml_string(name)?;
-            let node_type = self.get_yaml_string_at(&connection, "node_type")?;
-            let creds_name = self.get_yaml_string_at(&connection, "credentials")?;
+        let con = BusConnectionType {
+            node_type: (&node_type).into(),
+            credentials: creds.clone(),
+            logging: log_config,
+        };
 
-            let creds = match self.credentials.get(&creds_name) {
-                Some(a) => a,
-                None => {
-                    return Err(format!("No such credentials: {name}"));
-                }
-            };
-
-            let file = self.get_yaml_string_at(&connection, "log_file")?;
-
-            let level = self.get_yaml_string_at(&connection, "log_level")?;
-            let level = log::LevelFilter::from_str(&level).unwrap();
-
-            let mut facility = None;
-            if let Some(f) = &connection["syslog_facility"].as_str() {
-                facility = Some(syslog::Facility::from_str(&f).unwrap());
-            }
-
-            let mut actlog_facility = None;
-            if let Some(f) = &connection["activity_log_facility"].as_str() {
-                actlog_facility = Some(syslog::Facility::from_str(&f).unwrap());
-            }
-
-            let con = BusConnectionType {
-                node_type: (&node_type).into(),
-                credentials: creds.clone(),
-                log_level: level,
-                syslog_facility: facility,
-                activity_log_facility: actlog_facility,
-                log_file: match file.as_str() {
-                    "syslog" => LogFile::Syslog,
-                    _ => LogFile::Filename(file)
-                },
-            };
-
-            self.connections.insert(name, con);
-        }
+        self.connections.insert(name, con);
 
         Ok(())
     }

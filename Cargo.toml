@@ -26,5 +26,5 @@ name = "router"
 name = "client"
 
 [[example]]
-name = "multi-domain-routing"
+name = "client-demo"
 

@@ -606,6 +606,8 @@ impl Router {
     }
 }
 
+// TODO notify connected service coordinators when we shut down?
+
 fn main() {
 
     let config = opensrf::init("private_router").unwrap();

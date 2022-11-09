@@ -20,20 +20,36 @@ const TRIM_THREAD_ID: usize = 5;
 pub struct Logger {
     logfile: conf::LogFile,
     loglevel: log::LevelFilter,
-    facility: Option<syslog::Facility>,
+    facility: syslog::Facility,
     writer: Option<UnixDatagram>,
     application: String,
 }
 
 impl Logger {
-    pub fn new(con_type: &conf::BusConnectionType) -> Self {
-        Logger {
-            logfile: con_type.log_file().clone(),
-            loglevel: con_type.log_level(),
-            facility: con_type.syslog_facility(),
+    pub fn new(options: &conf::LogOptions) -> Result<Self, String> {
+
+        let file = match options.log_file() {
+            Some(f) => f,
+            None => return Err(format!("log_file option required"))
+        };
+
+        let level = match options.log_level() {
+            Some(l) => l,
+            None => &log::LevelFilter::Info,
+        };
+
+        let facility = match options.syslog_facility() {
+            Some(f) => f,
+            None => syslog::Facility::LOG_LOCAL0,
+        };
+
+        Ok(Logger {
+            logfile: file.clone(),
+            loglevel: level.clone(),
+            facility: facility.clone(),
             writer: None,
             application: Logger::find_app_name(),
-        }
+        })
     }
 
     fn find_app_name() -> String {
@@ -58,7 +74,7 @@ impl Logger {
     }
 
     pub fn set_facility(&mut self, facility: syslog::Facility) {
-        self.facility = Some(facility);
+        self.facility = facility;
     }
 
     /// Setup our global log handler.
@@ -87,10 +103,7 @@ impl Logger {
     ///
     /// Essentially copied from the syslog crate.
     fn encode_priority(&self, severity: syslog::Severity) -> syslog::Priority {
-        if let Some(f) = self.facility {
-            return f as u8 | severity as u8;
-        }
-        panic!("Direct logging to a file not yet supported");
+        return self.facility as u8 | severity as u8;
     }
 }
 
