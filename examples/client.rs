@@ -1,25 +1,19 @@
 use opensrf::Client;
-use opensrf::Config;
-use opensrf::Logger;
 use std::collections::HashMap;
 
-const SERVICE: &str = "opensrf.rs-public";
-const METHOD: &str = "opensrf.rs-public.echo";
-const DOMAIN: &str = "public.localhost";
+const SERVICE: &str = "opensrf.settings";
+const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {
-    let mut conf = Config::from_file("conf/opensrf.yml")?;
+    let conf = opensrf::init("service")?;
+    let conf = conf.into_shared();
 
-    let connection = conf.set_primary_connection("service", DOMAIN)?;
+    let mut client = Client::connect(conf.clone())?;
 
-    let ct = connection.connection_type();
-    Logger::new(ct.log_level(), ct.log_facility())
-        .init()
-        .unwrap();
+    let pc = conf.primary_connection().unwrap();
 
-    let mut client = Client::connect(conf.to_shared())?;
-
-    if let Some(jv) = client.send_router_command(DOMAIN, "summarize", None, true)? {
+    // See what's up with the router.
+    if let Some(jv) = client.send_router_command(pc.node_name(), "summarize", None, true)? {
         println!("Router command returned: {}", jv.dump());
     }
 
@@ -53,7 +47,7 @@ fn main() -> Result<(), String> {
     ses2.disconnect()?; // only required if ses.connect() was called
     ses.disconnect()?; // only required if ses.connect() was called
 
-    // Iterator example of a one-off request for a service
+    // Example of a variety of JsonValue creation options.
     let params = vec![
         json::parse("{\"stuff\":[3, 123, null]}").unwrap(),
         json::from(HashMap::from([("more stuff", "yep")])),

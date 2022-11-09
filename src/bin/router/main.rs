@@ -4,10 +4,7 @@ use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use opensrf::bus::Bus;
 use opensrf::conf;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
-use opensrf::Logger;
 use std::thread;
-use std::env;
-use getopts::Options;
 
 /// A service controller.
 ///
@@ -610,52 +607,15 @@ impl Router {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let mut opts = Options::new();
 
-    opts.optopt("h", "host", "Hostname", "HOSTNAME");
-    opts.optopt("d", "domain", "domain", "domain");
-    opts.optflag("l", "localhost", "Use Localhost");
-    opts.optopt("c", "osrf-config", "OpenSRF Config", "OSRF_CONFIG");
-
-    let params = match opts.parse(&args[1..]) {
-        Ok(p) => p,
-        Err(e) => {
-            println!("\n{e}\n{}", opts.usage("Usage: "));
-            return;
-        }
-    };
-
-    let conf_file = params.opt_get_default(
-        "osrf-config", "conf/opensrf_core.yml".to_string()).unwrap();
-
-    let config = conf::Config::from_file(&conf_file).unwrap();
-
-    let domain;
-
-    if let Some(d) = params.opt_str("domain") {
-        domain = d.to_string();
-    } else if params.opt_present("localhost") {
-        domain = "localhost".to_string();
-    } else {
-        eprintln!("Router requires --localhost or a --domain value");
-        return;
-    }
-
-    let contype = match config.get_connection_type("private_router") {
-        Some(c) => c,
-        None => panic!("No such connection type: private_router"),
-    };
-
-    Logger::new(&contype).init().unwrap();
+    let config = opensrf::init("private_router").unwrap();
 
     // Each name gets 1 router for each of its 2 public/private sudbomains.
     // Each runs in its own thread.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
     // Private Router Thread ---
-    let mut conf = config.clone();
-    conf.set_primary_connection("private_router", &domain).unwrap();
+    let conf = config.clone();
 
 	threads.push(thread::spawn(|| {
 		let mut router = Router::new(conf);
@@ -665,6 +625,7 @@ fn main() {
 
     // Public Router Thread ---
     let mut conf = config.clone();
+    let domain = config.primary_connection().unwrap().domain_name();
     conf.set_primary_connection("public_router", &domain).unwrap();
 
 	threads.push(thread::spawn(|| {

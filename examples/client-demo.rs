@@ -1,21 +1,13 @@
-use opensrf::logging::Logger;
-use opensrf::{Client, Config};
+use opensrf::Client;
 
-/*
-const SERVICE: &str = "opensrf.rs-public";
-const METHOD: &str = "opensrf.rs-public.echo";
-*/
 const SERVICE: &str = "opensrf.settings";
 const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {
 
-    let mut conf = Config::from_file("/home/berick/code/OpenSRF/examples/opensrf_core.yml.example")?;
-    let con = conf.set_primary_connection("service", "localhost")?;
+    let conf = opensrf::init("service")?;
 
-    Logger::new(con.connection_type()).init().unwrap();
-
-    let mut client = Client::connect(conf.to_shared())?;
+    let mut client = Client::connect(conf.into_shared())?;
 
     // ---------------------------------------------------------
     // SESSION + MANUAL REQUEST --------------------------------

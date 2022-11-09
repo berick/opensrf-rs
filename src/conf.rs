@@ -122,6 +122,7 @@ impl BusConnectionType {
 #[derive(Debug, Clone)]
 pub struct BusConnection {
     port: u16,
+    domain_name: String,
     node_name: String,
     connection_type: BusConnectionType,
 }
@@ -130,15 +131,15 @@ impl BusConnection {
     pub fn connection_type(&self) -> &BusConnectionType {
         &self.connection_type
     }
-
+    pub fn domain_name(&self) -> &str {
+        &self.domain_name
+    }
     pub fn node_name(&self) -> &str {
         &self.node_name
     }
-
     pub fn port(&self) -> u16 {
         self.port
     }
-
     pub fn set_node_name(&mut self, node_name: &str) {
         self.node_name = node_name.to_string();
     }
@@ -157,7 +158,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn to_shared(self) -> Arc<Config> {
+    pub fn into_shared(self) -> Arc<Config> {
         Arc::new(self)
     }
 
@@ -422,6 +423,7 @@ impl Config {
 
         Ok(BusConnection {
             port: node.port(),
+            domain_name: domain.to_string(),
             node_name: node.name().to_string(),
             connection_type: con_type.clone(),
         })
