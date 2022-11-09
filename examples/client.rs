@@ -13,7 +13,8 @@ fn main() -> Result<(), String> {
 
     let mut sclient = SettingsClient::new(client.clone());
     sclient.set_host_config(false)?;
-    println!("SETTINGS: {}", sclient.settings().dump());
+    println!("SETTINGS: {}",
+        sclient.value("apps/opensrf.settings/unix_config/max_children").dump());
 
     let pc = conf.primary_connection().unwrap();
 

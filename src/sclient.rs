@@ -1,3 +1,5 @@
+///! Settings Client Module
+///
 use super::client::Client;
 use super::conf::Config;
 
@@ -46,6 +48,19 @@ impl SettingsClient {
             Some(s) => &s,
             None => &json::JsonValue::Null
         }
+    }
+
+    pub fn value(&self, slashpath: &str) -> &json::JsonValue {
+        let mut value = match self.settings.as_ref() {
+            Some(v) => v,
+            None => &json::JsonValue::Null
+        };
+
+        for part in slashpath.split("/") {
+            value = &value[part]; // ::Null if not found
+        }
+
+        value
     }
 }
 
