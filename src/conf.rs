@@ -5,6 +5,7 @@ use std::sync::Arc;
 use syslog;
 use yaml_rust::yaml;
 use yaml_rust::YamlLoader;
+use gethostname::gethostname;
 
 const DEFAULT_BUS_PORT: u16 = 6379;
 
@@ -160,6 +161,8 @@ impl BusConnection {
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    /// Our hostname.
+    hostname: String,
     connections: HashMap<String, BusConnectionType>,
     credentials: HashMap<String, BusCredentials>,
     domains: Vec<BusDomain>,
@@ -213,6 +216,7 @@ impl Config {
         let root = &docs[0];
 
         let mut conf = Config {
+            hostname: Config::get_hostname()?,
             credentials: HashMap::new(),
             connections: HashMap::new(),
             domains: Vec::new(),
@@ -268,7 +272,6 @@ impl Config {
     }
 
     fn build_log_config(&mut self, log_config: &yaml::Yaml) -> Result<LogOptions, String> {
-
 
         let mut options = LogOptions {
             log_level: None,
@@ -509,5 +512,20 @@ impl Config {
         let con = self.new_bus_connection(connection_type, domain_name)?;
         self.primary_connection = Some(con);
         Ok(self.primary_connection.as_ref().unwrap())
+    }
+
+    fn get_hostname() -> Result<String, String> {
+        match gethostname().into_string() {
+            Ok(h) => Ok(h),
+            Err(e) => Err(format!("Cannot format host name: {e:?}")),
+        }
+    }
+
+    pub fn hostname(&self) -> &str {
+        &self.hostname
+    }
+
+    pub fn set_hostname(&mut self, hostname: &str) {
+        self.hostname = hostname.to_string();
     }
 }

@@ -325,4 +325,8 @@ impl Client {
             self.session(service).request(method, params)?,
         ))
     }
+
+    pub fn config(&self) -> Arc<conf::Config> {
+        self.singleton().borrow().config.clone()
+    }
 }

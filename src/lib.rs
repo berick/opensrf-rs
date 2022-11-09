@@ -5,6 +5,7 @@ pub use client::Client;
 pub use conf::Config;
 pub use logging::Logger;
 pub use session::SessionHandle;
+pub use sclient::SettingsClient;
 
 pub mod addr;
 pub mod app;
@@ -19,6 +20,7 @@ pub mod server;
 pub mod session;
 pub mod util;
 pub mod worker;
+pub mod sclient;
 
 #[cfg(test)]
 mod tests;
@@ -76,6 +78,10 @@ pub fn init_with_options(
             }
         }
     };
+
+    if params.opt_present("localhost") {
+        config.set_hostname("localhost");
+    }
 
     config.set_primary_connection(connection_type, &domain)?;
 
