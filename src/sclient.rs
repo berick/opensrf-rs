@@ -1,66 +1,66 @@
 ///! Settings Client Module
 ///
 use super::client::Client;
-use super::conf::Config;
+use std::sync::Arc;
 
 const SETTINGS_TIMEOUT: i32 = 10;
 
-pub struct SettingsClient {
-    client: Client,
-    settings: Option<json::JsonValue>,
-}
+pub struct SettingsClient;
 
 impl SettingsClient {
-    pub fn new(client: Client) -> Self {
-        SettingsClient {
-            client,
-            settings: None,
-        }
-    }
 
-    pub fn set_host_config(&mut self, force: bool) -> Result<(), String> {
-
-        if self.settings.is_some() && !force {
-            return Ok(());
-        }
-
-        let mut ses = self.client.session("opensrf.settings");
+    /// Fetch the host config for our host.
+    ///
+    /// If force is set, it is passed to opensrf.settings to override
+    /// any caching.
+    pub fn get_host_settings(client: &mut Client, force: bool) -> Result<HostSettings, String> {
+        let mut ses = client.session("opensrf.settings");
 
         let mut req = ses.request(
             "opensrf.settings.default_config.get",
             vec![
-                json::from(self.client.config().hostname()),
+                json::from(client.config().hostname()),
                 json::from(force)
             ]
         )?;
 
-        self.settings = req.recv(SETTINGS_TIMEOUT)?;
-
-        if self.settings.is_none() {
-            Err(format!("Settings server returned no response!"))
+        if let Some(s) = req.recv(SETTINGS_TIMEOUT)? {
+            Ok(HostSettings { settings: s })
         } else {
-            Ok(())
+            Err(format!("Settings server returned no response!"))
         }
     }
+}
 
+/// Read-only wrapper around a JSON blob of server setting values, which
+/// provides accessor methods for pulling setting values.
+pub struct HostSettings {
+    settings: json::JsonValue,
+}
+
+impl HostSettings {
+
+    /// Returns the full host settings config as a JsonValue.
     pub fn settings(&self) -> &json::JsonValue {
-        match &self.settings {
-            Some(s) => &s,
-            None => &json::JsonValue::Null
-        }
+        &self.settings
     }
 
+    /// Returns the JsonValue at the specified path.
+    ///
+    /// Panics of the host config has not yet been retrieved.
+    ///
+    /// E.g. sclient.value("apps/opensrf.settings/unix_config/max_children");
     pub fn value(&self, slashpath: &str) -> &json::JsonValue {
-        let mut value = match self.settings.as_ref() {
-            Some(v) => v,
-            None => &json::JsonValue::Null
-        };
-
+        let mut value = self.settings();
         for part in slashpath.split("/") {
-            value = &value[part]; // ::Null if not found
+            value = &value[part]; // -> JsonValue::Null if key is not found.
         }
 
         value
+    }
+
+    pub fn into_shared(self) -> Arc<Self> {
+        Arc::new(self)
     }
 }
 

@@ -1,12 +1,11 @@
-/*
 use super::app;
 use super::client::Client;
 use super::conf;
-use super::logging::Logger;
 use super::message;
 use super::method;
 use super::session;
-use super::worker::Worker;
+use super::sclient::{SettingsClient, HostSettings};
+use super::worker::{Worker, WorkerState, WorkerStateEvent};
 use signal_hook;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,37 +24,6 @@ struct WorkerThread {
     join_handle: thread::JoinHandle<()>,
 }
 
-/*
-impl fmt::Display for WorkerThread {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Worker [{}]", self.worker
-    }
-}
-*/
-
-/// Each worker thread is in one of these states.
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum WorkerState {
-    Idle,
-    Active,
-    Done,
-}
-
-#[derive(Debug)]
-pub struct WorkerStateEvent {
-    pub worker_id: u64,
-    pub state: WorkerState,
-}
-
-impl WorkerStateEvent {
-    pub fn worker_id(&self) -> u64 {
-        self.worker_id
-    }
-    pub fn state(&self) -> WorkerState {
-        self.state
-    }
-}
-
 pub struct Server {
     application: Box<dyn app::Application>,
     methods: Option<Arc<HashMap<String, method::Method>>>,
@@ -68,37 +36,45 @@ pub struct Server {
     to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     to_parent_rx: mpsc::Receiver<WorkerStateEvent>,
     stopping: Arc<AtomicBool>,
+    host_settings: Arc<HostSettings>,
+    // TODO min/max idle
+    min_workers: usize,
+    max_workers: usize,
 }
 
 impl Server {
-    pub fn new(
-        domain: &str,
-        mut config: conf::Config,
-        application: Box<dyn app::Application>,
-    ) -> Self {
+
+    pub fn start(application: Box<dyn app::Application>) -> Result<(), String> {
+
         let service = application.name();
 
-        if config.get_service_config(service).is_none() {
-            panic!("No configuration found for service {}", service);
-        };
-
-        let conn = match config.set_primary_connection("service", domain) {
+        let config = match super::init("service") {
             Ok(c) => c,
-            Err(e) => panic!("Cannot set primary connection for domain {}: {}", domain, e),
+            Err(e) => panic!("Cannot start server for {}: {}", service, e),
         };
 
-        let ct = conn.connection_type();
+        // We're done editing our Config. Wrap it in an Arc.
+        let config = config.into_shared();
 
-        Logger::new(ct.log_level(), ct.log_facility())
-            .init()
-            .unwrap();
-
-        let config = config.to_shared();
-
-        let client = match Client::connect(config.clone()) {
+        let mut client = match Client::connect(config.clone()) {
             Ok(c) => c,
             Err(e) => panic!("Server cannot connect to bus: {}", e),
         };
+
+        let host_settings = match SettingsClient::get_host_settings(&mut client, true) {
+            Ok(s) => s,
+            Err(e) => panic!("Cannot fetch host setttings: {}", e),
+        };
+
+        let min_workers = host_settings.value(
+            &format!("apps/{service}/unix_config/min_workers"))
+            .as_usize()
+            .unwrap_or(1);
+
+        let max_workers = host_settings.value(
+            &format!("apps/{service}/unix_config/max_workers"))
+            .as_usize()
+            .unwrap_or(20);
 
         // We have a single to-parent channel whose trasmitter is cloned
         // per thread.  Communication from worker threads to the parent
@@ -109,21 +85,30 @@ impl Server {
             mpsc::Receiver<WorkerStateEvent>,
         ) = mpsc::sync_channel(0);
 
-        Server {
-            workers: HashMap::new(),
+        let mut server = Server {
             config,
             client,
             application,
+            min_workers,
+            max_workers,
             methods: None,
             worker_id_gen: 0,
             to_parent_tx: tx,
             to_parent_rx: rx,
+            workers: HashMap::new(),
             stopping: Arc::new(AtomicBool::new(false)),
-        }
+            host_settings: host_settings.into_shared(),
+        };
+
+        server.listen()
     }
 
     fn config(&self) -> &Arc<conf::Config> {
         &self.config
+    }
+
+    fn host_settings(&self) -> &Arc<HostSettings> {
+        &self.host_settings
     }
 
     fn app(&self) -> &Box<dyn app::Application> {
@@ -143,23 +128,10 @@ impl Server {
         self.worker_id_gen
     }
 
-    // Configuration for the service we are hosting.
-    //
-    // Assumes we have a config for our service and panics if none is found.
-    fn service_conf(&self) -> &conf::Service {
-        self.config()
-            .services()
-            .iter()
-            .filter(|s| s.name().eq(self.service()))
-            .next()
-            .unwrap()
-    }
-
     fn spawn_threads(&mut self) {
-        let min_workers = self.service_conf().min_workers() as usize;
         let mut worker_count = self.workers.len();
 
-        while worker_count < min_workers {
+        while worker_count < self.min_workers {
             self.spawn_one_thread();
             worker_count = self.workers.len();
         }
@@ -173,12 +145,14 @@ impl Server {
         let service = self.service().to_string();
         let factory = self.app().worker_factory();
         let env = self.app().env();
+        let host_settings = self.host_settings.clone();
 
         log::trace!("server: spawning a new worker {worker_id}");
 
         let handle = thread::spawn(move || {
             Server::start_worker_thread(
                 env,
+                host_settings,
                 factory,
                 service,
                 worker_id,
@@ -199,6 +173,7 @@ impl Server {
 
     fn start_worker_thread(
         env: Box<dyn app::ApplicationEnv>,
+        host_settings: Arc<HostSettings>,
         factory: app::ApplicationWorkerFactory,
         service: String,
         worker_id: u64,
@@ -208,7 +183,9 @@ impl Server {
     ) {
         log::trace!("Creating new worker {worker_id}");
 
-        let mut worker = match Worker::new(service, worker_id, config, methods, to_parent_tx) {
+        let mut worker = match Worker::new(
+            service, worker_id, config, host_settings, methods, to_parent_tx) {
+
             Ok(w) => w,
             Err(e) => {
                 log::error!("Cannot create worker: {e}. Exiting.");
@@ -232,35 +209,36 @@ impl Server {
         }
     }
 
-    /// List of domains that want to host our service
-    fn hosting_domains(&self) -> Vec<&conf::BusDomain> {
-        let mut domains: Vec<&conf::BusDomain> = Vec::new();
+    /// List of domains where we are allowed to run and therefore
+    /// whose routers we should register our presence with.
+    fn hosting_nodes(&self) -> Vec<&conf::BusNode> {
+        let mut nodes: Vec<&conf::BusNode> = Vec::new();
         for domain in self.config().domains() {
-            match domain.hosted_services() {
-                Some(services) => {
-                    for svc in services {
-                        if svc.eq(self.service()) {
-                            domains.push(domain);
+            for node in vec![domain.private_node(), domain.public_node()].iter() {
+                match node.allowed_services() {
+                    Some(services) => {
+                        if services.contains(&self.service().to_string()) {
+                            nodes.push(node);
                         }
                     }
-                }
-                None => {
-                    // A domain with no specific set of hosted services
-                    // hosts all services
-                    domains.push(domain);
+                    None => {
+                        // A domain with no specific set of hosted services
+                        // hosts all services
+                        nodes.push(node);
+                    }
                 }
             }
         }
 
-        domains
+        nodes
     }
 
     fn register_routers(&mut self) -> Result<(), String> {
-        for domain in self.hosting_domains() {
-            log::info!("server: registering with router at {}", domain.name());
+        for node in self.hosting_nodes() {
+            log::info!("server: registering with router at {}", node.name());
 
             self.client.send_router_command(
-                domain.name(),
+                node.name(),
                 "register",
                 Some(self.service()),
                 false,
@@ -270,11 +248,11 @@ impl Server {
     }
 
     fn unregister_routers(&mut self) -> Result<(), String> {
-        for domain in self.hosting_domains() {
-            log::info!("server: un-registering with router at {}", domain.name());
+        for node in self.hosting_nodes() {
+            log::info!("server: un-registering with router at {}", node.name());
 
             self.client.send_router_command(
-                domain.name(),
+                node.name(),
                 "unregister",
                 Some(self.service()),
                 false,
@@ -297,7 +275,8 @@ impl Server {
     fn register_methods(&mut self) -> Result<(), String> {
         let client = self.client.clone();
         let config = self.config().clone();
-        let list = self.app_mut().register_methods(client, config)?;
+        let host_settings = self.host_settings().clone();
+        let list = self.app_mut().register_methods(client, config, host_settings)?;
         let mut hash: HashMap<String, method::Method> = HashMap::new();
         for m in list {
             hash.insert(m.name().to_string(), m);
@@ -400,7 +379,7 @@ impl Server {
 
         if idle == 0 {
             // TODO min idle, etc.
-            if active < self.service_conf().max_workers() as usize {
+            if active < self.max_workers {
                 self.spawn_one_thread();
             } else {
                 log::warn!("server: reached max workers!");
@@ -442,4 +421,3 @@ fn system_method_echo(
     }
     Ok(())
 }
-*/

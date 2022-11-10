@@ -1,13 +1,12 @@
-/*
 use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use opensrf::client;
 use opensrf::conf;
 use opensrf::message;
 use opensrf::method;
-use opensrf::server;
+use opensrf::server::Server;
+use opensrf::sclient::HostSettings;
 use opensrf::session::ServerSession;
 use std::any::Any;
-use std::env;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -54,16 +53,13 @@ impl Application for RsPrivateApplication {
     fn register_methods(
         &self,
         _client: client::Client,
-        config: Arc<conf::Config>,
+        _config: Arc<conf::Config>,
+        _host_settings: Arc<HostSettings>,
     ) -> Result<Vec<method::Method>, String> {
-        log::info!(
-            "Registering methods with config: {:?}",
-            config.get_service_config(self.name()).unwrap()
-        );
+        log::info!("Registering methods for {}", self.name());
 
         Ok(vec![
             method::Method::new("opensrf.rs-private.time", method::ParamCount::Zero, time),
-            method::Method::new("opensrf.rs-private.echo", method::ParamCount::Any, echo),
             method::Method::new(
                 "opensrf.rs-private.counter",
                 method::ParamCount::Zero,
@@ -86,6 +82,7 @@ struct RsPrivateWorker {
     env: Option<RsPrivateEnv>,
     client: Option<client::Client>,
     config: Option<Arc<conf::Config>>,
+    host_settings: Option<Arc<HostSettings>>,
     count: usize,
 }
 
@@ -95,6 +92,7 @@ impl RsPrivateWorker {
             env: None,
             client: None,
             config: None,
+            host_settings: None,
             // A value that increases with each call to counter method
             // to demostrate thread-level state maintenance.
             count: 0,
@@ -124,10 +122,12 @@ impl ApplicationWorker for RsPrivateWorker {
         &mut self,
         client: client::Client,
         config: Arc<conf::Config>,
+        host_settings: Arc<HostSettings>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {
         self.client = Some(client);
         self.config = Some(config);
+        self.host_settings = Some(host_settings);
 
         match env.as_any().downcast_ref::<RsPrivateEnv>() {
             Some(eref) => self.env = Some(eref.clone()),
@@ -148,29 +148,13 @@ impl ApplicationWorker for RsPrivateWorker {
 }
 
 fn main() {
-    let _args: Vec<String> = env::args().collect(); // TODO config file
-
-    let app = RsPrivateApplication::new();
-
-    let mut server = server::Server::new(
-        "localhost", // TODO command line
-        conf::Config::from_file("conf/opensrf_core.yml").unwrap(),
-        Box::new(app),
-    );
-
-    server.listen().unwrap();
-}
-
-fn echo(
-    _worker: &mut Box<dyn ApplicationWorker>,
-    session: &mut ServerSession,
-    method: &message::Method,
-) -> Result<(), String> {
-    for p in method.params() {
-        session.respond(p.clone())?;
+    if let Err(e) = Server::start(Box::new(RsPrivateApplication::new())) {
+        log::error!("Exiting on server failure: {e}");
+    } else {
+        log::info!("Server exited normally");
     }
-    Ok(())
 }
+
 
 fn time(
     _worker: &mut Box<dyn ApplicationWorker>,
@@ -214,6 +198,3 @@ fn sleep(
 
     Ok(())
 }
-*/
-
-fn main() {}

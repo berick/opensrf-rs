@@ -8,6 +8,7 @@ pub use session::SessionHandle;
 pub use sclient::SettingsClient;
 
 pub mod addr;
+pub mod util;
 pub mod app;
 pub mod bus;
 pub mod classified;
@@ -16,9 +17,8 @@ pub mod conf;
 pub mod logging;
 pub mod message;
 pub mod method;
-pub mod server;
 pub mod session;
-pub mod util;
+pub mod server;
 pub mod worker;
 pub mod sclient;
 

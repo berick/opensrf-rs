@@ -1,4 +1,5 @@
 use super::client;
+use super::sclient;
 use super::conf;
 use super::method;
 use std::any::Any;
@@ -20,6 +21,7 @@ pub trait ApplicationWorker: Any {
         &mut self,
         client: client::Client,
         config: Arc<conf::Config>,
+        host_settings: Arc<sclient::HostSettings>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String>;
 
@@ -43,6 +45,7 @@ pub trait Application {
         &self,
         client: client::Client,
         config: Arc<conf::Config>,
+        host_settings: Arc<sclient::HostSettings>,
     ) -> Result<Vec<method::Method>, String>;
 
     /// Returns a function pointer (ApplicationWorkerFactory) that returns

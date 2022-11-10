@@ -1,7 +1,6 @@
-/*
 use super::addr::{ClientAddress, ServiceAddress};
-use super::app;
 use super::client::{ClientSingleton, Client};
+use super::app;
 use super::conf;
 use super::message;
 use super::message::Message;
@@ -11,7 +10,7 @@ use super::message::Payload;
 use super::message::TransportMessage;
 use super::method;
 use super::method::ParamCount;
-use super::server::{WorkerState, WorkerStateEvent};
+use super::sclient::HostSettings;
 use super::session::ServerSession;
 use std::collections::HashMap;
 use std::fmt;
@@ -21,11 +20,37 @@ use std::cell::RefMut;
 use std::thread;
 use std::time;
 
+/// Each worker thread is in one of these states.
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum WorkerState {
+    Idle,
+    Active,
+    Done,
+}
+
+#[derive(Debug)]
+pub struct WorkerStateEvent {
+    pub worker_id: u64,
+    pub state: WorkerState,
+}
+
+impl WorkerStateEvent {
+    pub fn worker_id(&self) -> u64 {
+        self.worker_id
+    }
+    pub fn state(&self) -> WorkerState {
+        self.state
+    }
+}
+
 /// A Worker runs in its own thread and responds to API requests.
 pub struct Worker {
     service: String,
 
     config: Arc<conf::Config>,
+
+    // Settings from opensrf.settings
+    host_settings: Arc<HostSettings>,
 
     client: Client,
 
@@ -33,9 +58,6 @@ pub struct Worker {
     connected: bool,
 
     methods: Arc<HashMap<String, method::Method>>,
-
-    // Keep a local copy for convenience
-    service_conf: conf::Service,
 
     // Currently active session.
     // A worker can only have one active session at a time.
@@ -61,17 +83,15 @@ impl Worker {
         service: String,
         worker_id: u64,
         config: Arc<conf::Config>,
+        host_settings: Arc<HostSettings>,
         methods: Arc<HashMap<String, method::Method>>,
         to_parent_tx: mpsc::SyncSender<WorkerStateEvent>,
     ) -> Result<Worker, String> {
-        // The presence of a config for our service is confirmed
-        // in the Server.
-        let sconf = config.get_service_config(&service).unwrap().clone();
-
         let client = Client::connect(config.clone())?;
 
         Ok(Worker {
             config,
+            host_settings,
             service,
             worker_id,
             methods,
@@ -79,7 +99,6 @@ impl Worker {
             to_parent_tx,
             session: None,
             connected: false,
-            service_conf: sconf,
         })
     }
 
@@ -99,11 +118,6 @@ impl Worker {
         self.session.as_mut().unwrap()
     }
 
-    // Configuration for the service we are hosting.
-    fn service_conf(&self) -> &conf::Service {
-        &self.service_conf
-    }
-
     pub fn worker_id(&self) -> u64 {
         self.worker_id
     }
@@ -114,7 +128,8 @@ impl Worker {
         env: Box<dyn app::ApplicationEnv>,
     ) -> Result<Box<dyn app::ApplicationWorker>, String> {
         let mut app_worker = (factory)();
-        app_worker.absorb_env(self.client.clone(), self.config.clone(), env)?;
+        app_worker.absorb_env(self.client.clone(),
+            self.config.clone(), self.host_settings.clone(), env)?;
         Ok(app_worker)
     }
 
@@ -126,11 +141,19 @@ impl Worker {
             return;
         }
 
+        let max_requests: u32 = self.host_settings.value(
+            &format!("apps/{}/unix_config/max_requests", self.service))
+            .as_u32()
+            .unwrap_or(5000);
+
+        let keepalive: i32 = self.host_settings.value(
+            &format!("apps/{}/unix_config/keepalive", self.service))
+            .as_i32()
+            .unwrap_or(5);
+
         let mut requests: u32 = 0;
-        let max_reqs = self.service_conf().max_requests();
         let service_addr = ServiceAddress::new(&self.service).full().to_string();
         let local_addr = self.client.address().full().to_string();
-        let keepalive = self.service_conf().keepalive() as i32;
 
         // Setup the stream for our service.  This is the top-level
         // service address where new requests arrive.
@@ -139,7 +162,7 @@ impl Worker {
             return;
         }
 
-        while requests < max_reqs {
+        while requests < max_requests {
             let timeout: i32;
             let sent_to: &str;
 
@@ -325,7 +348,7 @@ impl Worker {
         );
 
         self.client_internal_mut()
-            .get_domain_bus(self.session().sender().domain())?
+            .get_node_bus(self.session().sender().domain())?
             .send(&tmsg)
     }
 
@@ -417,7 +440,7 @@ impl Worker {
         self.client
             .singleton()
             .borrow_mut()
-            .get_domain_bus(self.session().sender().domain())?
+            .get_node_bus(self.session().sender().domain())?
             .send(&tmsg)
     }
 
@@ -431,4 +454,3 @@ impl Worker {
         })
     }
 }
-*/
