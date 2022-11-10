@@ -1,5 +1,5 @@
 use super::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
-use super::client::{ClientSingleton, Client};
+use super::client::{Client, ClientSingleton};
 use super::message;
 use super::message::Message;
 use super::message::MessageStatus;
@@ -11,10 +11,10 @@ use super::message::TransportMessage;
 use super::util;
 use json::JsonValue;
 use log::{debug, error, trace, warn};
-use std::fmt;
-use std::rc::Rc;
 use std::cell::RefCell;
 use std::cell::RefMut;
+use std::fmt;
+use std::rc::Rc;
 
 const CONNECT_TIMEOUT: i32 = 10;
 const DEFAULT_REQUEST_TIMEOUT: i32 = 60;
@@ -212,7 +212,10 @@ impl Session {
                 return Ok(None);
             }
 
-            let tmsg = match self.client_internal_mut().recv_session(&mut timer, self.thread())? {
+            let tmsg = match self
+                .client_internal_mut()
+                .recv_session(&mut timer, self.thread())?
+            {
                 Some(m) => m,
                 None => continue, // timeout, etc.
             };
@@ -346,12 +349,13 @@ impl Session {
                 .borrow_mut()
                 .bus_mut()
                 .send_to(&tmsg, router_addr.full())?;
-
         } else {
             if let Some(a) = self.worker_addr() {
                 // Requests directly to client addresses must be routed
                 // to the node of the client address.
-                self.client_internal_mut().get_node_bus(a.domain())?.send(&tmsg)?;
+                self.client_internal_mut()
+                    .get_node_bus(a.domain())?
+                    .send(&tmsg)?;
             } else {
                 self.reset();
                 return Err(format!("We are connected, but have no worker_addr()"));
@@ -615,7 +619,9 @@ impl ServerSession {
 
         let node_name = self.sender.domain();
 
-        self.client_internal_mut().get_node_bus(node_name)?.send(&tmsg)
+        self.client_internal_mut()
+            .get_node_bus(node_name)?
+            .send(&tmsg)
     }
 
     pub fn respond_complete<T>(&mut self, value: T) -> Result<(), String>
@@ -660,6 +666,8 @@ impl ServerSession {
 
         let node_name = self.sender.domain();
 
-        self.client_internal_mut().get_node_bus(node_name)?.send(&tmsg)
+        self.client_internal_mut()
+            .get_node_bus(node_name)?
+            .send(&tmsg)
     }
 }

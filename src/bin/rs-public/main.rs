@@ -4,9 +4,9 @@ use opensrf::conf;
 use opensrf::message;
 use opensrf::method;
 use opensrf::method::ParamCount;
+use opensrf::sclient::HostSettings;
 use opensrf::server::Server;
 use opensrf::session::ServerSession;
-use opensrf::sclient::HostSettings;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -71,6 +71,7 @@ struct RsPublicWorker {
     client: Option<Client>,
     config: Option<Arc<conf::Config>>,
     host_settings: Option<Arc<HostSettings>>,
+    // Worker/thread-specific value that persists for the life of the worker.
     relay_count: usize,
 }
 

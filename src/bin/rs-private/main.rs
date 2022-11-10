@@ -3,8 +3,8 @@ use opensrf::client;
 use opensrf::conf;
 use opensrf::message;
 use opensrf::method;
-use opensrf::server::Server;
 use opensrf::sclient::HostSettings;
+use opensrf::server::Server;
 use opensrf::session::ServerSession;
 use std::any::Any;
 use std::sync::Arc;
@@ -154,7 +154,6 @@ fn main() {
         log::info!("Server exited normally");
     }
 }
-
 
 fn time(
     _worker: &mut Box<dyn ApplicationWorker>,

@@ -197,7 +197,10 @@ impl RouterNode {
         let bus = match &mut self.bus {
             Some(b) => b,
             None => {
-                return Err(format!("We have no connection to node_name {}", self.node_name()));
+                return Err(format!(
+                    "We have no connection to node_name {}",
+                    self.node_name()
+                ));
             }
         };
 
@@ -277,7 +280,10 @@ impl Router {
             return Ok(&mut self.primary_node);
         }
 
-        let mut pos_op = self.remote_nodes.iter().position(|d| d.node_name.eq(node_name));
+        let mut pos_op = self
+            .remote_nodes
+            .iter()
+            .position(|d| d.node_name.eq(node_name));
 
         if pos_op.is_none() {
             debug!("Adding new RouterNode for node_name={}", node_name);
@@ -336,7 +342,10 @@ impl Router {
         }
 
         if let Some(pos) = rem_pos_op {
-            debug!("Removing cleared node_name entry for node_name={}", node_name);
+            debug!(
+                "Removing cleared node_name entry for node_name={}",
+                node_name
+            );
             self.remote_nodes.remove(pos);
         }
 
@@ -609,7 +618,6 @@ impl Router {
 // TODO notify connected service coordinators when we shut down?
 
 fn main() {
-
     let config = opensrf::init("private_router").unwrap();
 
     // Each name gets 1 router for each of its 2 public/private sudbomains.
@@ -619,22 +627,23 @@ fn main() {
     // Private Router Thread ---
     let conf = config.clone();
 
-	threads.push(thread::spawn(|| {
-		let mut router = Router::new(conf);
-		router.init().unwrap();
-		router.listen();
-	}));
+    threads.push(thread::spawn(|| {
+        let mut router = Router::new(conf);
+        router.init().unwrap();
+        router.listen();
+    }));
 
     // Public Router Thread ---
     let mut conf = config.clone();
     let domain = config.primary_connection().unwrap().domain_name();
-    conf.set_primary_connection("public_router", &domain).unwrap();
+    conf.set_primary_connection("public_router", &domain)
+        .unwrap();
 
-	threads.push(thread::spawn(|| {
-		let mut router = Router::new(conf);
-		router.init().unwrap();
-		router.listen();
-	}));
+    threads.push(thread::spawn(|| {
+        let mut router = Router::new(conf);
+        router.init().unwrap();
+        router.listen();
+    }));
 
     // Block here while the routers are running.
     for thread in threads {

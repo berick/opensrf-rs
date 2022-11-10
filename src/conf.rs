@@ -1,3 +1,4 @@
+use gethostname::gethostname;
 use std::collections::HashMap;
 use std::fs;
 use std::str::FromStr;
@@ -5,7 +6,6 @@ use std::sync::Arc;
 use syslog;
 use yaml_rust::yaml;
 use yaml_rust::YamlLoader;
-use gethostname::gethostname;
 
 const DEFAULT_BUS_PORT: u16 = 6379;
 
@@ -28,7 +28,7 @@ impl BusCredentials {
 #[derive(Debug, Clone, PartialEq)]
 pub enum BusNodeType {
     Private,
-    Public
+    Public,
 }
 
 impl From<&String> for BusNodeType {
@@ -112,7 +112,6 @@ impl LogOptions {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct BusConnectionType {
     node_type: BusNodeType,
@@ -157,7 +156,6 @@ impl BusConnection {
         self.node_name = node_name.to_string();
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -272,7 +270,6 @@ impl Config {
     }
 
     fn build_log_config(&mut self, log_config: &yaml::Yaml) -> Result<LogOptions, String> {
-
         let mut options = LogOptions {
             log_level: None,
             syslog_facility: None,
@@ -286,7 +283,7 @@ impl Config {
         if let Some(file) = log_config["log_file"].as_str() {
             options.log_file = match file {
                 "syslog" => Some(LogFile::Syslog),
-                _ => Some(LogFile::Filename(file.to_string()))
+                _ => Some(LogFile::Filename(file.to_string())),
             };
         } else {
             options.log_file = defaults.log_file().clone();
@@ -351,7 +348,6 @@ impl Config {
     }
 
     fn apply_domains(&mut self, domains: &yaml::Yaml) -> Result<(), String> {
-
         if let Some(domains) = domains.as_vec() {
             for domain_conf in domains {
                 let name = self.get_yaml_string_at(&domain_conf, "name")?;
@@ -365,7 +361,6 @@ impl Config {
     }
 
     fn add_domain(&mut self, name: String, domain_conf: &yaml::Yaml) -> Result<(), String> {
-
         let private_hash = &domain_conf["private_node"];
         let public_hash = &domain_conf["public_node"];
 
@@ -412,7 +407,6 @@ impl Config {
     }
 
     fn apply_connections(&mut self, connections: &yaml::Yaml) -> Result<(), String> {
-
         if let Some(hash) = connections.as_hash() {
             for (name, connection) in hash {
                 let name = self.unpack_yaml_string(name)?;

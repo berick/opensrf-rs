@@ -1,6 +1,6 @@
 use super::addr::{ClientAddress, ServiceAddress};
-use super::client::{ClientSingleton, Client};
 use super::app;
+use super::client::{Client, ClientSingleton};
 use super::conf;
 use super::message;
 use super::message::Message;
@@ -12,11 +12,11 @@ use super::method;
 use super::method::ParamCount;
 use super::sclient::HostSettings;
 use super::session::ServerSession;
+use std::cell::RefMut;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::cell::RefMut;
 use std::thread;
 use std::time;
 
@@ -128,8 +128,12 @@ impl Worker {
         env: Box<dyn app::ApplicationEnv>,
     ) -> Result<Box<dyn app::ApplicationWorker>, String> {
         let mut app_worker = (factory)();
-        app_worker.absorb_env(self.client.clone(),
-            self.config.clone(), self.host_settings.clone(), env)?;
+        app_worker.absorb_env(
+            self.client.clone(),
+            self.config.clone(),
+            self.host_settings.clone(),
+            env,
+        )?;
         Ok(app_worker)
     }
 
@@ -141,13 +145,15 @@ impl Worker {
             return;
         }
 
-        let max_requests: u32 = self.host_settings.value(
-            &format!("apps/{}/unix_config/max_requests", self.service))
+        let max_requests: u32 = self
+            .host_settings
+            .value(&format!("apps/{}/unix_config/max_requests", self.service))
             .as_u32()
             .unwrap_or(5000);
 
-        let keepalive: i32 = self.host_settings.value(
-            &format!("apps/{}/unix_config/keepalive", self.service))
+        let keepalive: i32 = self
+            .host_settings
+            .value(&format!("apps/{}/unix_config/keepalive", self.service))
             .as_i32()
             .unwrap_or(5);
 
@@ -157,7 +163,11 @@ impl Worker {
 
         // Setup the stream for our service.  This is the top-level
         // service address where new requests arrive.
-        if let Err(e) = self.client_internal_mut().bus_mut().setup_stream(Some(&service_addr)) {
+        if let Err(e) = self
+            .client_internal_mut()
+            .bus_mut()
+            .setup_stream(Some(&service_addr))
+        {
             log::error!("{selfstr} cannot setup service stream at {service_addr}: {e}");
             return;
         }

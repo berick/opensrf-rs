@@ -1,16 +1,16 @@
 use super::addr::{ClientAddress, RouterAddress};
-use super::session::ResponseIterator;
-use super::session::SessionHandle;
-use super::message;
 use super::bus;
 use super::conf;
+use super::message;
+use super::session::ResponseIterator;
+use super::session::SessionHandle;
 use super::util;
 use json::JsonValue;
 use log::{info, trace};
-use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
+use std::rc::Rc;
 use std::sync::Arc;
 
 const DEFAULT_ROUTER_COMMAND_TIMEOUT: i32 = 10;
@@ -49,7 +49,9 @@ impl ClientSingleton {
         let con = match config.primary_connection() {
             Some(c) => c,
             None => {
-                return Err(format!("ClientSingleton Config requires a primary connection"));
+                return Err(format!(
+                    "ClientSingleton Config requires a primary connection"
+                ));
             }
         };
 
@@ -242,7 +244,6 @@ pub struct Client {
 
 impl Client {
     pub fn connect(config: Arc<conf::Config>) -> Result<Client, String> {
-
         // This performs the actual bus-level connection.
         let singleton = ClientSingleton::new(config)?;
 
@@ -264,7 +265,7 @@ impl Client {
         Client {
             address: self.address().clone(),
             node_name: self.node_name().to_string(),
-            singleton: self.singleton().clone()
+            singleton: self.singleton().clone(),
         }
     }
 
@@ -303,9 +304,12 @@ impl Client {
         router_class: Option<&str>,
         await_reply: bool,
     ) -> Result<Option<JsonValue>, String> {
-        self.singleton()
-            .borrow_mut()
-            .send_router_command(node_name, command, router_class, await_reply)
+        self.singleton().borrow_mut().send_router_command(
+            node_name,
+            command,
+            router_class,
+            await_reply,
+        )
     }
 
     /// Send a request and receive a ResponseIterator for iterating

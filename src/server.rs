@@ -3,8 +3,8 @@ use super::client::Client;
 use super::conf;
 use super::message;
 use super::method;
+use super::sclient::{HostSettings, SettingsClient};
 use super::session;
-use super::sclient::{SettingsClient, HostSettings};
 use super::worker::{Worker, WorkerState, WorkerStateEvent};
 use signal_hook;
 use std::collections::HashMap;
@@ -43,9 +43,7 @@ pub struct Server {
 }
 
 impl Server {
-
     pub fn start(application: Box<dyn app::Application>) -> Result<(), String> {
-
         let service = application.name();
 
         let config = match super::init("service") {
@@ -66,13 +64,13 @@ impl Server {
             Err(e) => panic!("Cannot fetch host setttings: {}", e),
         };
 
-        let min_workers = host_settings.value(
-            &format!("apps/{service}/unix_config/min_workers"))
+        let min_workers = host_settings
+            .value(&format!("apps/{service}/unix_config/min_workers"))
             .as_usize()
             .unwrap_or(1);
 
-        let max_workers = host_settings.value(
-            &format!("apps/{service}/unix_config/max_workers"))
+        let max_workers = host_settings
+            .value(&format!("apps/{service}/unix_config/max_workers"))
             .as_usize()
             .unwrap_or(20);
 
@@ -184,8 +182,13 @@ impl Server {
         log::trace!("Creating new worker {worker_id}");
 
         let mut worker = match Worker::new(
-            service, worker_id, config, host_settings, methods, to_parent_tx) {
-
+            service,
+            worker_id,
+            config,
+            host_settings,
+            methods,
+            to_parent_tx,
+        ) {
             Ok(w) => w,
             Err(e) => {
                 log::error!("Cannot create worker: {e}. Exiting.");
@@ -276,7 +279,9 @@ impl Server {
         let client = self.client.clone();
         let config = self.config().clone();
         let host_settings = self.host_settings().clone();
-        let list = self.app_mut().register_methods(client, config, host_settings)?;
+        let list = self
+            .app_mut()
+            .register_methods(client, config, host_settings)?;
         let mut hash: HashMap<String, method::Method> = HashMap::new();
         for m in list {
             hash.insert(m.name().to_string(), m);

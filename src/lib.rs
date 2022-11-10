@@ -1,14 +1,13 @@
-use std::env;
 use getopts;
+use std::env;
 
 pub use client::Client;
 pub use conf::Config;
 pub use logging::Logger;
-pub use session::SessionHandle;
 pub use sclient::SettingsClient;
+pub use session::SessionHandle;
 
 pub mod addr;
-pub mod util;
 pub mod app;
 pub mod bus;
 pub mod classified;
@@ -17,10 +16,11 @@ pub mod conf;
 pub mod logging;
 pub mod message;
 pub mod method;
-pub mod session;
-pub mod server;
-pub mod worker;
 pub mod sclient;
+pub mod server;
+pub mod session;
+pub mod util;
+pub mod worker;
 
 #[cfg(test)]
 mod tests;
@@ -32,8 +32,7 @@ const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.yml";
 ///
 /// This does not connect to the bus.
 pub fn init(connection_type: &str) -> Result<conf::Config, String> {
-    let (config, _) =
-        init_with_options(connection_type, &mut getopts::Options::new())?;
+    let (config, _) = init_with_options(connection_type, &mut getopts::Options::new())?;
     Ok(config)
 }
 
@@ -42,9 +41,8 @@ pub fn init(connection_type: &str) -> Result<conf::Config, String> {
 /// OpenSRF command line options.
 pub fn init_with_options(
     connection_type: &str,
-    opts: &mut getopts::Options
+    opts: &mut getopts::Options,
 ) -> Result<(conf::Config, getopts::Matches), String> {
-
     let args: Vec<String> = env::args().collect();
 
     opts.optflag("l", "localhost", "Use Localhost");
@@ -58,8 +56,7 @@ pub fn init_with_options(
         }
     };
 
-    let filename = match params.opt_get_default(
-        "osrf-config", DEFAULT_OSRF_CONFIG.to_string()) {
+    let filename = match params.opt_get_default("osrf-config", DEFAULT_OSRF_CONFIG.to_string()) {
         Ok(f) => f,
         Err(e) => {
             return Err(format!("Error reading osrf-config option: {e}"));
@@ -73,10 +70,9 @@ pub fn init_with_options(
         _ => match params.opt_present("localhost") {
             true => "localhost".to_string(),
             _ => {
-                return Err(format!(
-                    "Router requires --localhost or --domain <domain>"));
+                return Err(format!("Router requires --localhost or --domain <domain>"));
             }
-        }
+        },
     };
 
     if params.opt_present("localhost") {
@@ -94,5 +90,3 @@ pub fn init_with_options(
 
     Ok((config, params))
 }
-
-

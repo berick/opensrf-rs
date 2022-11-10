@@ -8,7 +8,6 @@ const SETTINGS_TIMEOUT: i32 = 10;
 pub struct SettingsClient;
 
 impl SettingsClient {
-
     /// Fetch the host config for our host.
     ///
     /// If force is set, it is passed to opensrf.settings to override
@@ -18,10 +17,7 @@ impl SettingsClient {
 
         let mut req = ses.request(
             "opensrf.settings.default_config.get",
-            vec![
-                json::from(client.config().hostname()),
-                json::from(force)
-            ]
+            vec![json::from(client.config().hostname()), json::from(force)],
         )?;
 
         if let Some(s) = req.recv(SETTINGS_TIMEOUT)? {
@@ -39,7 +35,6 @@ pub struct HostSettings {
 }
 
 impl HostSettings {
-
     /// Returns the full host settings config as a JsonValue.
     pub fn settings(&self) -> &json::JsonValue {
         &self.settings
@@ -63,5 +58,3 @@ impl HostSettings {
         Arc::new(self)
     }
 }
-
-

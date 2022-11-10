@@ -1,10 +1,10 @@
+use super::conf;
 ///! OpenSRF Syslog
 use log;
 use std::os::unix::net::UnixDatagram;
 use std::process;
 use syslog;
 use thread_id;
-use super::conf;
 
 const SYSLOG_UNIX_PATH: &str = "/dev/log";
 
@@ -27,10 +27,9 @@ pub struct Logger {
 
 impl Logger {
     pub fn new(options: &conf::LogOptions) -> Result<Self, String> {
-
         let file = match options.log_file() {
             Some(f) => f,
-            None => return Err(format!("log_file option required"))
+            None => return Err(format!("log_file option required")),
         };
 
         let level = match options.log_level() {
@@ -124,14 +123,12 @@ impl log::Log for Logger {
             record.module_path().unwrap_or_default()
         };
 
-        let severity = self.encode_priority(
-            match levelname.to_lowercase().as_str() {
-                "debug" | "trace" => syslog::Severity::LOG_DEBUG,
-                "info" => syslog::Severity::LOG_INFO,
-                "warn" => syslog::Severity::LOG_WARNING,
-                _ => syslog::Severity::LOG_ERR,
-            }
-        );
+        let severity = self.encode_priority(match levelname.to_lowercase().as_str() {
+            "debug" | "trace" => syslog::Severity::LOG_DEBUG,
+            "info" => syslog::Severity::LOG_INFO,
+            "warn" => syslog::Severity::LOG_WARNING,
+            _ => syslog::Severity::LOG_ERR,
+        });
 
         let mut tid: String = thread_id::get().to_string();
         if tid.len() > TRIM_THREAD_ID {

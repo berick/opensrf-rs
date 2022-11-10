@@ -4,7 +4,6 @@ const SERVICE: &str = "opensrf.settings";
 const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {
-
     let conf = opensrf::init("service")?;
 
     let mut client = Client::connect(conf.into_shared())?;

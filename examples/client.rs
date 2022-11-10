@@ -62,12 +62,17 @@ fn main() -> Result<(), String> {
     }
 
     for _ in 0..10 {
-        let v: Vec<u8> = vec![];
-        if let Some(resp) = client.sendrecv("opensrf.rs-public", "opensrf.rs-public.counter", v)?.next() {
+        if let Some(resp) = client
+            .sendrecv(
+                "opensrf.rs-public",
+                "opensrf.rs-public.counter",
+                Vec::<u8>::new(),
+            )?
+            .next()
+        {
             println!("opensrf.rs-public returned: {}", resp.dump());
         }
     }
-
 
     Ok(())
 }
