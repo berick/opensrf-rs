@@ -61,5 +61,13 @@ fn main() -> Result<(), String> {
         println!("SYSTEM ECHO: {}", resp.dump());
     }
 
+    for _ in 0..10 {
+        let v: Vec<u8> = vec![];
+        if let Some(resp) = client.sendrecv("opensrf.rs-public", "opensrf.rs-public.counter", v)?.next() {
+            println!("opensrf.rs-public returned: {}", resp.dump());
+        }
+    }
+
+
     Ok(())
 }

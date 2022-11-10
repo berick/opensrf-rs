@@ -1,14 +1,13 @@
-/*
 use opensrf::app::{Application, ApplicationEnv, ApplicationWorker, ApplicationWorkerFactory};
 use opensrf::client::Client;
 use opensrf::conf;
 use opensrf::message;
 use opensrf::method;
 use opensrf::method::ParamCount;
-use opensrf::server;
+use opensrf::server::Server;
 use opensrf::session::ServerSession;
+use opensrf::sclient::HostSettings;
 use std::any::Any;
-use std::env;
 use std::sync::Arc;
 
 const APPNAME: &str = "opensrf.rs-public";
@@ -50,6 +49,7 @@ impl Application for RsPublicApplication {
         &self,
         _client: Client,
         _config: Arc<conf::Config>,
+        _host_settings: Arc<HostSettings>,
     ) -> Result<Vec<method::Method>, String> {
         let namer = |n| format!("{APPNAME}.{n}");
 
@@ -70,6 +70,7 @@ struct RsPublicWorker {
     env: Option<RsPublicEnv>,
     client: Option<Client>,
     config: Option<Arc<conf::Config>>,
+    host_settings: Option<Arc<HostSettings>>,
     relay_count: usize,
 }
 
@@ -79,6 +80,7 @@ impl RsPublicWorker {
             env: None,
             client: None,
             config: None,
+            host_settings: None,
             // A value that increases with each call relayed.
             relay_count: 0,
         }
@@ -117,10 +119,12 @@ impl ApplicationWorker for RsPublicWorker {
         &mut self,
         client: Client,
         config: Arc<conf::Config>,
+        host_settings: Arc<HostSettings>,
         env: Box<dyn ApplicationEnv>,
     ) -> Result<(), String> {
         self.client = Some(client);
         self.config = Some(config);
+        self.host_settings = Some(host_settings);
 
         match env.as_any().downcast_ref::<RsPublicEnv>() {
             Some(eref) => self.env = Some(eref.clone()),
@@ -141,17 +145,11 @@ impl ApplicationWorker for RsPublicWorker {
 }
 
 fn main() {
-    let _args: Vec<String> = env::args().collect(); // TODO config file
-
-    let app = RsPublicApplication::new();
-
-    let mut server = server::Server::new(
-        "localhost", // TODO command line
-        conf::Config::from_file("conf/opensrf_core.yml").unwrap(),
-        Box::new(app),
-    );
-
-    server.listen().unwrap();
+    if let Err(e) = Server::start(Box::new(RsPublicApplication::new())) {
+        log::error!("Exiting on server failure: {e}");
+    } else {
+        log::info!("Server exited normally");
+    }
 }
 
 fn relay(
@@ -174,6 +172,3 @@ fn relay(
 
     Ok(())
 }
-*/
-
-fn main() {}
