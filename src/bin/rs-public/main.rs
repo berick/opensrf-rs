@@ -55,7 +55,6 @@ impl Application for RsPublicApplication {
 
         Ok(vec![
             method::Method::new(&namer("time"), ParamCount::Zero, relay),
-            method::Method::new(&namer("echo"), ParamCount::Any, relay),
             method::Method::new(&namer("counter"), ParamCount::Zero, relay),
             method::Method::new(&namer("sleep"), ParamCount::Range(0, 1), relay),
         ])

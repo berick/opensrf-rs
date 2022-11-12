@@ -1,5 +1,6 @@
 use super::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use super::client::{Client, ClientSingleton};
+use super::params::ApiParams;
 use super::message;
 use super::message::Message;
 use super::message::MessageStatus;
@@ -74,6 +75,7 @@ impl Request {
         Ok(None)
     }
 }
+
 
 /// Client communication state maintenance.
 struct Session {
@@ -311,22 +313,21 @@ impl Session {
     }
 
     /// Issue a new API call and return the thread_trace of the sent request.
-    fn request<T>(&mut self, method: &str, params: Vec<T>) -> Result<usize, String>
+    fn request<T>(&mut self, method: &str, params: T) -> Result<usize, String>
     where
-        T: Into<JsonValue>,
+        T: Into<ApiParams>,
     {
         debug!("{self} sending request {method}");
 
         let trace = self.incr_thread_trace();
 
-        let mut pvec = Vec::new();
-        for p in params {
-            let mut jv = json::from(p);
-            if let Some(s) = self.client.singleton().borrow().serializer() {
-                jv = s.pack(&jv);
-            }
-            pvec.push(jv);
-        }
+        // Turn params into a ApiParams object.
+        let params = params.into();
+
+        let params = match params.serialize(&self.client) {
+            Some(p) => p,
+            None => params.params().to_owned()
+        };
 
         let tmsg = TransportMessage::with_body(
             self.destination_addr().full(),
@@ -335,7 +336,7 @@ impl Session {
             Message::new(
                 MessageType::Request,
                 trace,
-                Payload::Method(Method::new(method, pvec)),
+                Payload::Method(Method::new(method, params)),
             ),
         );
 
@@ -344,12 +345,12 @@ impl Session {
             // our primary node.
 
             let router_addr = RouterAddress::new(self.client.node_name());
-            self.client
-                .singleton()
-                .borrow_mut()
+            self.client_internal_mut()
                 .bus_mut()
                 .send_to(&tmsg, router_addr.full())?;
+
         } else {
+
             if let Some(a) = self.worker_addr() {
                 // Requests directly to client addresses must be routed
                 // to the node of the client address.
@@ -454,9 +455,9 @@ impl SessionHandle {
     /// Issue a new API call and return the Request
     ///
     /// params is a Vec of JSON-able things.  E.g. vec![1,2,3], vec![json::object!{a: "b"}]
-    pub fn request<T>(&mut self, method: &str, params: Vec<T>) -> Result<Request, String>
+    pub fn request<T>(&mut self, method: &str, params: T) -> Result<Request, String>
     where
-        T: Into<JsonValue>,
+        T: Into<ApiParams>,
     {
         Ok(Request::new(
             self.session.clone(),
@@ -468,9 +469,9 @@ impl SessionHandle {
     /// the responses to the method.
     ///
     /// Uses the default request timeout DEFAULT_REQUEST_TIMEOUT.
-    pub fn sendrecv<T>(&mut self, method: &str, params: Vec<T>) -> Result<ResponseIterator, String>
+    pub fn sendrecv<T>(&mut self, method: &str, params: T) -> Result<ResponseIterator, String>
     where
-        T: Into<JsonValue>,
+        T: Into<ApiParams>,
     {
         Ok(ResponseIterator::new(self.request(method, params)?))
     }
@@ -590,6 +591,7 @@ impl ServerSession {
         self.responded_complete
     }
 
+    // TODO a T for Respone similar to ApiParams?
     pub fn respond<T>(&self, value: T) -> Result<(), String>
     where
         T: Into<JsonValue>,

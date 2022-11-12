@@ -11,6 +11,7 @@ pub mod addr;
 pub mod app;
 pub mod bus;
 pub mod classified;
+pub mod params;
 pub mod client;
 pub mod conf;
 pub mod logging;

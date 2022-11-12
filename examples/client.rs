@@ -22,14 +22,14 @@ fn main() -> Result<(), String> {
     let mut ses2 = client.session(SERVICE);
 
     let params = vec!["hello2", "world2", "again"];
-    let params2 = vec!["whatever", "floats", "boats"];
 
     ses.connect()?; // optional
     ses2.connect()?;
 
     // Request -> Receive example
-    let mut req = ses.request(METHOD, params)?;
-    let mut req2 = ses2.request(METHOD, params2)?;
+    let mut req = ses.request(METHOD, &params)?;
+
+    let mut req2 = ses2.request(METHOD, &params)?;
 
     while let Some(resp) = req2.recv(10)? {
         println!("Response: {}", resp.dump());
@@ -41,7 +41,7 @@ fn main() -> Result<(), String> {
 
     // Iterator example
     let params = vec!["hello2", "world2", "again"];
-    for resp in ses.sendrecv(METHOD, params)? {
+    for resp in ses.sendrecv(METHOD, &params)? {
         println!("Response: {}", resp.dump());
     }
 
@@ -57,7 +57,7 @@ fn main() -> Result<(), String> {
         json::object! {"just fantastic": json::array!["a", "b"]},
     ];
 
-    for resp in client.sendrecv(SERVICE, "opensrf.system.echo", params)? {
+    for resp in client.sendrecv(SERVICE, "opensrf.system.echo", &params)? {
         println!("SYSTEM ECHO: {}", resp.dump());
     }
 
@@ -66,7 +66,7 @@ fn main() -> Result<(), String> {
             .sendrecv(
                 "opensrf.rs-public",
                 "opensrf.rs-public.counter",
-                Vec::<u8>::new(),
+                &Vec::<u8>::new(),
             )?
             .next()
         {

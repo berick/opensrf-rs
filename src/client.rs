@@ -5,6 +5,7 @@ use super::message;
 use super::session::ResponseIterator;
 use super::session::SessionHandle;
 use super::util;
+use super::params::ApiParams;
 use json::JsonValue;
 use log::{info, trace};
 use std::cell::RefCell;
@@ -320,10 +321,10 @@ impl Client {
         &mut self,
         service: &str,
         method: &str,
-        params: Vec<T>,
+        params: T,
     ) -> Result<ResponseIterator, String>
     where
-        T: Into<JsonValue>,
+        T: Into<ApiParams>,
     {
         Ok(ResponseIterator::new(
             self.session(service).request(method, params)?,
