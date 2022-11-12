@@ -45,9 +45,7 @@ impl From<&Vec<JsonValue>> for ApiParams {
 
 impl From<Vec<JsonValue>> for ApiParams {
     fn from(v: Vec<JsonValue>) -> ApiParams {
-        ApiParams {
-            params: v
-        }
+        ApiParams { params: v }
     }
 }
 
@@ -93,16 +91,14 @@ impl From<&Vec<String>> for ApiParams {
 
 impl From<JsonValue> for ApiParams {
     fn from(v: JsonValue) -> ApiParams {
-        ApiParams {
-            params: vec![v]
-        }
+        ApiParams { params: vec![v] }
     }
 }
 
 impl From<&JsonValue> for ApiParams {
     fn from(v: &JsonValue) -> ApiParams {
         ApiParams {
-            params: vec![v.clone()]
+            params: vec![v.clone()],
         }
     }
 }
@@ -164,7 +160,10 @@ impl From<usize> for ApiParams {
 impl From<Option<JsonValue>> for ApiParams {
     fn from(v: Option<JsonValue>) -> ApiParams {
         ApiParams {
-            params: match v { Some(v) => vec![v], None => Vec::new() },
+            params: match v {
+                Some(v) => vec![v],
+                None => Vec::new(),
+            },
         }
     }
 }
@@ -172,9 +171,10 @@ impl From<Option<JsonValue>> for ApiParams {
 impl From<Option<&JsonValue>> for ApiParams {
     fn from(v: Option<&JsonValue>) -> ApiParams {
         ApiParams {
-            params: match v { Some(v) => vec![v.clone()], None => Vec::new() },
+            params: match v {
+                Some(v) => vec![v.clone()],
+                None => Vec::new(),
+            },
         }
     }
 }
-
-

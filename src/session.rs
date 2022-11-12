@@ -1,6 +1,5 @@
 use super::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use super::client::{Client, ClientSingleton};
-use super::params::ApiParams;
 use super::message;
 use super::message::Message;
 use super::message::MessageStatus;
@@ -9,6 +8,7 @@ use super::message::Method;
 use super::message::Payload;
 use super::message::Status;
 use super::message::TransportMessage;
+use super::params::ApiParams;
 use super::util;
 use json::JsonValue;
 use log::{debug, error, trace, warn};
@@ -75,7 +75,6 @@ impl Request {
         Ok(None)
     }
 }
-
 
 /// Client communication state maintenance.
 struct Session {
@@ -326,7 +325,7 @@ impl Session {
 
         let params = match params.serialize(&self.client) {
             Some(p) => p,
-            None => params.params().to_owned()
+            None => params.params().to_owned(),
         };
 
         let tmsg = TransportMessage::with_body(
@@ -348,9 +347,7 @@ impl Session {
             self.client_internal_mut()
                 .bus_mut()
                 .send_to(&tmsg, router_addr.full())?;
-
         } else {
-
             if let Some(a) = self.worker_addr() {
                 // Requests directly to client addresses must be routed
                 // to the node of the client address.
