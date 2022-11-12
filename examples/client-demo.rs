@@ -32,7 +32,7 @@ fn main() -> Result<(), String> {
 
     let mut ses = client.session(SERVICE);
 
-    for resp in ses.sendrecv(METHOD, &params)? {
+    for resp in ses.sendrecv(METHOD, 12345)? {
         println!("Response: {}", resp.dump());
     }
 
