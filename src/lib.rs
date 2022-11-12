@@ -71,7 +71,7 @@ pub fn init_with_options(
         _ => match params.opt_present("localhost") {
             true => "localhost".to_string(),
             _ => {
-                return Err(format!("Router requires --localhost or --domain <domain>"));
+                return Err(format!("--localhost or --domain <domain> required"));
             }
         },
     };

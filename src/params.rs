@@ -57,11 +57,23 @@ impl From<&Vec<&str>> for ApiParams {
     }
 }
 
+impl From<Vec<&str>> for ApiParams {
+    fn from(v: Vec<&str>) -> ApiParams {
+        ApiParams::from(&v)
+    }
+}
+
 impl From<&Vec<u8>> for ApiParams {
     fn from(v: &Vec<u8>) -> ApiParams {
         ApiParams {
             params: v.iter().map(|j| json::from(*j)).collect(),
         }
+    }
+}
+
+impl From<Vec<u8>> for ApiParams {
+    fn from(v: Vec<u8>) -> ApiParams {
+        ApiParams::from(&v)
     }
 }
 
@@ -73,6 +85,12 @@ impl From<&Vec<i64>> for ApiParams {
     }
 }
 
+impl From<Vec<i64>> for ApiParams {
+    fn from(v: Vec<i64>) -> ApiParams {
+        ApiParams::from(&v)
+    }
+}
+
 impl From<&Vec<u64>> for ApiParams {
     fn from(v: &Vec<u64>) -> ApiParams {
         ApiParams {
@@ -81,11 +99,23 @@ impl From<&Vec<u64>> for ApiParams {
     }
 }
 
+impl From<Vec<u64>> for ApiParams {
+    fn from(v: Vec<u64>) -> ApiParams {
+        ApiParams::from(&v)
+    }
+}
+
 impl From<&Vec<String>> for ApiParams {
     fn from(v: &Vec<String>) -> ApiParams {
         ApiParams {
             params: v.iter().map(|s| json::from(s.to_string())).collect(),
         }
+    }
+}
+
+impl From<Vec<String>> for ApiParams {
+    fn from(v: Vec<String>) -> ApiParams {
+        ApiParams::from(&v)
     }
 }
 
