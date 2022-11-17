@@ -118,6 +118,8 @@ impl Router {
 pub struct ConfigBuilder {
     client: Option<BusClient>,
     routers: Vec<Router>,
+    gateway: Option<BusClient>,
+    log_protect: Vec<String>,
 }
 
 impl ConfigBuilder {
@@ -129,9 +131,11 @@ impl ConfigBuilder {
         }
 
         Ok(Config {
-            hostname: Config::get_hostname()?,
+            hostname: Config::get_os_hostname()?,
             client: self.client.unwrap(),
-            routers: self.routers
+            routers: self.routers,
+            gateway: self.gateway,
+            log_protect: self.log_protect,
         })
     }
 
@@ -165,7 +169,9 @@ impl ConfigBuilder {
 
         let mut builder = ConfigBuilder {
             client: None,
+            gateway: None,
             routers: Vec::new(),
+            log_protect: Vec::new(),
         };
 
         // Start with the Client portion, which will contain values
@@ -174,13 +180,31 @@ impl ConfigBuilder {
             match node.tag_name().name() {
                 "opensrf" => builder.unpack_opensrf_node(&node)?,
                 "routers" => builder.unpack_routers(&node)?,
-                "gateway" => {}
-                "shared" => {}
+                "gateway" => builder.unpack_gateway(&node)?,
+                "shared" => builder.unpack_shared(&node)?,
                 _ => {} // ignore
             }
         }
 
         Ok(builder)
+    }
+
+    fn unpack_gateway(&mut self, node: &roxmltree::Node) -> Result<(), String> {
+        self.gateway = Some(self.unpack_client_node(node)?);
+        Ok(())
+    }
+
+    fn unpack_shared(&mut self, node: &roxmltree::Node) -> Result<(), String> {
+
+        if let Some(lp) = node.children().filter(|c| c.has_tag_name("log_protect")).next() {
+            for ms in lp.children().filter(|c| c.has_tag_name("match_string")) {
+                if let Some(t) = ms.text() {
+                    self.log_protect.push(t.to_string());
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn unpack_routers(&mut self, node: &roxmltree::Node) -> Result<(), String> {
@@ -194,8 +218,9 @@ impl ConfigBuilder {
 
             let mut client = self.unpack_client_node(&tnode)?;
 
-            // But some client bits (logging) are not in side the transport element.
-            // TODO logging
+            // The logging configs for the routers sits outside its
+            // transport node.
+            client.logging = self.unpack_logging_node(&rnode)?;
 
             let router = Router { client, };
 
@@ -244,7 +269,9 @@ impl ConfigBuilder {
 
         if let Some(services) =
             rnode.children().filter(|n| n.has_tag_name("services")).next() {
+
             let mut svclist = Vec::new();
+
             for snode in services.children().filter(|n| n.has_tag_name("service")) {
                 if let Some(service) = snode.text() {
                     svclist.push(service.to_string());
@@ -390,6 +417,8 @@ pub struct Config {
     hostname: String,
     client: BusClient,
     routers: Vec<Router>,
+    gateway: Option<BusClient>,
+    log_protect: Vec<String>,
 }
 
 impl Config {
@@ -401,18 +430,29 @@ impl Config {
         &self.routers
     }
 
-    fn get_hostname() -> Result<String, String> {
-        match gethostname().into_string() {
-            Ok(h) => Ok(h),
-            Err(e) => Err(format!("Cannot format host name: {e:?}")),
-        }
+    pub fn log_protect(&self) -> &Vec<String> {
+        &self.log_protect
     }
 
+    pub fn gateway(&self) -> Option<&BusClient> {
+        self.gateway.as_ref()
+    }
+    pub fn client(&self) -> &BusClient {
+        &self.client
+    }
     pub fn hostname(&self) -> &str {
         &self.hostname
     }
 
+    /// Manually override the OS hostname, e.g. with "localhost"
     pub fn set_hostname(&mut self, hostname: &str) {
         self.hostname = hostname.to_string();
+    }
+
+    fn get_os_hostname() -> Result<String, String> {
+        match gethostname().into_string() {
+            Ok(h) => Ok(h),
+            Err(e) => Err(format!("Cannot read OS host name: {e:?}")),
+        }
     }
 }
