@@ -358,7 +358,7 @@ impl Worker {
         );
 
         self.client_internal_mut()
-            .get_node_bus(self.session().sender().domain())?
+            .get_domain_bus(self.session().sender().domain())?
             .send(&tmsg)
     }
 
@@ -450,7 +450,7 @@ impl Worker {
         self.client
             .singleton()
             .borrow_mut()
-            .get_node_bus(self.session().sender().domain())?
+            .get_domain_bus(self.session().sender().domain())?
             .send(&tmsg)
     }
 

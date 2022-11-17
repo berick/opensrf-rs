@@ -13,7 +13,6 @@ pub mod bus;
 pub mod classified;
 pub mod client;
 pub mod conf;
-pub mod conf2;
 pub mod logging;
 pub mod message;
 pub mod method;
@@ -27,14 +26,14 @@ pub mod worker;
 #[cfg(test)]
 mod tests;
 
-const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.yml";
+const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.xml";
 
 /// Read common command line parameters, parse the core config, apply
 /// the primary connection type, and setup logging.
 ///
 /// This does not connect to the bus.
-pub fn init(connection_type: &str) -> Result<conf::Config, String> {
-    let (config, _) = init_with_options(connection_type, &mut getopts::Options::new())?;
+pub fn init() -> Result<conf::Config, String> {
+    let (config, _) = init_with_options(&mut getopts::Options::new())?;
     Ok(config)
 }
 
@@ -42,7 +41,6 @@ pub fn init(connection_type: &str) -> Result<conf::Config, String> {
 /// of getopts::Options, which are then augmented with the standard
 /// OpenSRF command line options.
 pub fn init_with_options(
-    connection_type: &str,
     opts: &mut getopts::Options,
 ) -> Result<(conf::Config, getopts::Matches), String> {
     let args: Vec<String> = env::args().collect();
@@ -65,28 +63,13 @@ pub fn init_with_options(
         }
     };
 
-    let mut config = conf::Config::from_file(&filename)?;
-
-    let domain = match params.opt_str("domain") {
-        Some(d) => d,
-        _ => match params.opt_present("localhost") {
-            true => "localhost".to_string(),
-            _ => {
-                return Err(format!("--localhost or --domain <domain> required"));
-            }
-        },
-    };
+    let mut config = conf::ConfigBuilder::from_file(&filename)?.build()?;
 
     if params.opt_present("localhost") {
         config.set_hostname("localhost");
     }
 
-    config.set_primary_connection(connection_type, &domain)?;
-
-    // At this point, we know connection_type is valid.
-    let contype = config.get_connection_type(connection_type).unwrap();
-
-    if let Err(e) = Logger::new(contype.logging())?.init() {
+    if let Err(e) = Logger::new(config.client().logging())?.init() {
         return Err(format!("Error initializing logger: {e}"));
     }
 

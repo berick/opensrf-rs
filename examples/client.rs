@@ -1,26 +1,20 @@
 use opensrf::Client;
 use opensrf::SettingsClient;
 use std::collections::HashMap;
-use opensrf::conf2::ConfigBuilder;
 
 const SERVICE: &str = "opensrf.rs-private";
 const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {
-
-    let mut config = ConfigBuilder::from_file("/openils/conf/opensrf_core.xml")?.build()?;
-    println!("CONFIG: {config:?}");
-
-    /*
-    let conf = opensrf::init("service")?;
+    let conf = opensrf::init()?;
     let conf = conf.into_shared();
 
     let mut client = Client::connect(conf.clone())?;
 
-    let pc = conf.primary_connection().unwrap();
+    let domain = conf.client().domain().name();
 
     // See what's up with the router.
-    if let Some(jv) = client.send_router_command(pc.node_name(), "summarize", None, true)? {
+    if let Some(jv) = client.send_router_command(domain, "summarize", None, true)? {
         println!("Router command returned: {}", jv.dump());
     }
 
@@ -79,7 +73,6 @@ fn main() -> Result<(), String> {
             println!("opensrf.rs-public returned: {}", resp.dump());
         }
     }
-    */
 
     Ok(())
 }

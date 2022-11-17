@@ -22,16 +22,16 @@ pub trait DataSerializer {
 }
 
 /// Generally speaking, we only need 1 ClientSingleton per thread (hence
-/// the name).  This manages one bus connection per node and stores
+/// the name).  This manages one bus connection per domain and stores
 /// messages pulled from the bus that have not yet been processed by
 /// higher-up modules.
 pub struct ClientSingleton {
     bus: bus::Bus,
 
-    /// Our primary node
-    node_name: String,
+    /// Our primary domain
+    domain: String,
 
-    /// Connections to remote nodes
+    /// Connections to remote domains
     remote_bus_map: HashMap<String, bus::Bus>,
 
     config: Arc<conf::Config>,
@@ -47,21 +47,12 @@ pub struct ClientSingleton {
 
 impl ClientSingleton {
     fn new(config: Arc<conf::Config>) -> Result<ClientSingleton, String> {
-        let con = match config.primary_connection() {
-            Some(c) => c,
-            None => {
-                return Err(format!(
-                    "ClientSingleton Config requires a primary connection"
-                ));
-            }
-        };
-
-        let bus = bus::Bus::new(&con)?;
-        let node_name = con.node_name().to_string();
+        let bus = bus::Bus::new(config.client())?;
+        let domain = config.client().domain().name().to_string();
 
         Ok(ClientSingleton {
             config,
-            node_name,
+            domain,
             bus: bus,
             backlog: Vec::new(),
             remote_bus_map: HashMap::new(),
@@ -82,9 +73,9 @@ impl ClientSingleton {
         self.bus.address().full()
     }
 
-    /// Our primary bus node_name
-    fn node_name(&self) -> &str {
-        &self.node_name
+    /// Our primary bus domain
+    fn domain(&self) -> &str {
+        &self.domain
     }
 
     pub fn bus(&self) -> &bus::Bus {
@@ -95,40 +86,36 @@ impl ClientSingleton {
         &mut self.bus
     }
 
-    pub fn get_node_bus(&mut self, node_name: &str) -> Result<&mut bus::Bus, String> {
-        log::trace!("Loading bus connection for node_name: {node_name}");
+    pub fn get_domain_bus(&mut self, domain: &str) -> Result<&mut bus::Bus, String> {
+        log::trace!("Loading bus connection for domain: {domain}");
 
-        if node_name.eq(self.node_name()) {
+        if domain.eq(self.domain()) {
             Ok(&mut self.bus)
         } else {
-            if self.remote_bus_map.contains_key(node_name) {
-                return Ok(self.remote_bus_map.get_mut(node_name).unwrap());
+            if self.remote_bus_map.contains_key(domain) {
+                return Ok(self.remote_bus_map.get_mut(domain).unwrap());
             }
 
-            self.add_connection(node_name)
+            self.add_connection(domain)
         }
     }
 
-    /// Add a connection to a new remote node.
+    /// Add a connection to a new remote domain.
     ///
-    /// Panics if our configuration has no primary node.
-    fn add_connection(&mut self, node_name: &str) -> Result<&mut bus::Bus, String> {
-        // When adding a connection to a remote node, assume the same
-        // connection type, etc. is used and just change the node.
-        let mut con = self.config.primary_connection().unwrap().clone();
+    /// Panics if our configuration has no primary domain.
+    fn add_connection(&mut self, domain: &str) -> Result<&mut bus::Bus, String> {
+        // When adding a connection to a remote domain, assume the same
+        // connection type, etc. is used and just change the domain.
+        let mut conf = self.config.client().clone();
 
-        if self.config.get_node(node_name).is_none() {
-            return Err(format!("No configuration for node: {node_name}"));
-        };
+        conf.set_domain(domain);
 
-        con.set_node_name(node_name);
+        let bus = bus::Bus::new(&conf)?;
 
-        let bus = bus::Bus::new(&con)?;
+        info!("Opened connection to new domain: {}", domain);
 
-        info!("Opened connection to new node: {}", node_name);
-
-        self.remote_bus_map.insert(node_name.to_string(), bus);
-        self.get_node_bus(node_name)
+        self.remote_bus_map.insert(domain.to_string(), bus);
+        self.get_domain_bus(domain)
     }
 
     /// Returns the first transport message pulled from the transport
@@ -170,12 +157,12 @@ impl ClientSingleton {
 
     fn send_router_command(
         &mut self,
-        node_name: &str,
+        domain: &str,
         router_command: &str,
         router_class: Option<&str>,
         await_reply: bool,
     ) -> Result<Option<JsonValue>, String> {
-        let addr = RouterAddress::new(node_name);
+        let addr = RouterAddress::new(domain);
 
         // Always use the address of our primary Bus
         let mut tmsg = message::TransportMessage::new(
@@ -189,7 +176,7 @@ impl ClientSingleton {
             tmsg.set_router_class(rc);
         }
 
-        let bus = self.get_node_bus(node_name)?;
+        let bus = self.get_domain_bus(domain)?;
         bus.send(&tmsg)?;
 
         if !await_reply {
@@ -240,7 +227,7 @@ impl fmt::Display for ClientSingleton {
 pub struct Client {
     singleton: Rc<RefCell<ClientSingleton>>,
     address: ClientAddress,
-    node_name: String,
+    domain: String,
 }
 
 impl Client {
@@ -249,11 +236,11 @@ impl Client {
         let singleton = ClientSingleton::new(config)?;
 
         let address = singleton.bus().address().clone();
-        let node_name = singleton.node_name().to_string();
+        let domain = singleton.domain().to_string();
 
         Ok(Client {
             address,
-            node_name,
+            domain,
             singleton: Rc::new(RefCell::new(singleton)),
         })
     }
@@ -265,7 +252,7 @@ impl Client {
     pub fn clone(&self) -> Self {
         Client {
             address: self.address().clone(),
-            node_name: self.node_name().to_string(),
+            domain: self.domain().to_string(),
             singleton: self.singleton().clone(),
         }
     }
@@ -278,8 +265,8 @@ impl Client {
         &self.address
     }
 
-    pub fn node_name(&self) -> &str {
-        &self.node_name
+    pub fn domain(&self) -> &str {
+        &self.domain
     }
 
     /// Create a new client session for the requested service.
@@ -300,13 +287,13 @@ impl Client {
 
     pub fn send_router_command(
         &self,
-        node_name: &str,
+        domain: &str,
         command: &str,
         router_class: Option<&str>,
         await_reply: bool,
     ) -> Result<Option<JsonValue>, String> {
         self.singleton().borrow_mut().send_router_command(
-            node_name,
+            domain,
             command,
             router_class,
             await_reply,

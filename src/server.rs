@@ -46,7 +46,7 @@ impl Server {
     pub fn start(application: Box<dyn app::Application>) -> Result<(), String> {
         let service = application.name();
 
-        let config = match super::init("service") {
+        let config = match super::init() {
             Ok(c) => c,
             Err(e) => panic!("Cannot start server for {}: {}", service, e),
         };
@@ -212,50 +212,49 @@ impl Server {
         }
     }
 
-    /// List of domains where we are allowed to run and therefore
-    /// whose routers we should register our presence with.
-    fn hosting_nodes(&self) -> Vec<&conf::BusNode> {
-        let mut nodes: Vec<&conf::BusNode> = Vec::new();
-        for domain in self.config().domains() {
-            for node in vec![domain.private_node(), domain.public_node()].iter() {
-                match node.allowed_services() {
-                    Some(services) => {
-                        if services.contains(&self.service().to_string()) {
-                            nodes.push(node);
-                        }
+    /// List of domains where our service is allowed to run and
+    /// therefore whose routers with whom our presence should be registered.
+    fn hosting_domains(&self) -> Vec<String> {
+        let mut domains: Vec<String> = Vec::new();
+        for router in self.config().client().routers() {
+            match router.services() {
+                Some(services) => {
+                    if services.contains(&self.service().to_string()) {
+                        domains.push(router.domain().to_string());
                     }
-                    None => {
-                        // A domain with no specific set of hosted services
-                        // hosts all services
-                        nodes.push(node);
-                    }
+                }
+                None => {
+                    // A domain with no specific set of hosted services
+                    // hosts all services
+                    domains.push(router.domain().to_string());
                 }
             }
         }
 
-        nodes
+        domains
     }
 
     fn register_routers(&mut self) -> Result<(), String> {
-        for node in self.hosting_nodes() {
-            log::info!("server: registering with router at {}", node.name());
+        for domain in self.hosting_domains().iter() {
+            log::info!("server: registering with router at {domain}");
 
             self.client.send_router_command(
-                node.name(),
+                domain,
                 "register",
                 Some(self.service()),
                 false,
             )?;
         }
+
         Ok(())
     }
 
     fn unregister_routers(&mut self) -> Result<(), String> {
-        for node in self.hosting_nodes() {
-            log::info!("server: un-registering with router at {}", node.name());
+        for domain in self.hosting_domains().iter() {
+            log::info!("server: un-registering with router at {domain}");
 
             self.client.send_router_command(
-                node.name(),
+                domain,
                 "unregister",
                 Some(self.service()),
                 false,

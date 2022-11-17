@@ -121,7 +121,7 @@ impl fmt::Display for Session {
 
 impl Session {
     fn new(client: Client, service: &str) -> Session {
-        let router_addr = RouterAddress::new(client.node_name());
+        let router_addr = RouterAddress::new(client.domain());
         Session {
             client,
             router_addr,
@@ -341,18 +341,18 @@ impl Session {
 
         if !self.connected() {
             // Top-level API calls always go through the router on
-            // our primary node.
+            // our primary domain
 
-            let router_addr = RouterAddress::new(self.client.node_name());
+            let router_addr = RouterAddress::new(self.client.domain());
             self.client_internal_mut()
                 .bus_mut()
                 .send_to(&tmsg, router_addr.full())?;
         } else {
             if let Some(a) = self.worker_addr() {
                 // Requests directly to client addresses must be routed
-                // to the node of the client address.
+                // to the domain of the client address.
                 self.client_internal_mut()
-                    .get_node_bus(a.domain())?
+                    .get_domain_bus(a.domain())?
                     .send(&tmsg)?;
             } else {
                 self.reset();
@@ -424,7 +424,7 @@ impl Session {
         self.client
             .singleton()
             .borrow_mut()
-            .get_node_bus(dest_addr.domain())?
+            .get_domain_bus(dest_addr.domain())?
             .send(&tmsg)?;
 
         self.reset();
@@ -616,10 +616,10 @@ impl ServerSession {
             msg,
         );
 
-        let node_name = self.sender.domain();
+        let domain = self.sender.domain();
 
         self.client_internal_mut()
-            .get_node_bus(node_name)?
+            .get_domain_bus(domain)?
             .send(&tmsg)
     }
 
@@ -663,10 +663,10 @@ impl ServerSession {
             msg,
         );
 
-        let node_name = self.sender.domain();
+        let domain = self.sender.domain();
 
         self.client_internal_mut()
-            .get_node_bus(node_name)?
+            .get_domain_bus(domain)?
             .send(&tmsg)
     }
 }

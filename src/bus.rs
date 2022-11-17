@@ -18,7 +18,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(config: &conf::BusConnection) -> Result<Self, String> {
+    pub fn new(config: &conf::BusClient) -> Result<Self, String> {
         let info = Bus::connection_info(config)?;
 
         trace!("Bus::new() connecting to {:?}", info);
@@ -37,10 +37,11 @@ impl Bus {
             }
         };
 
-        let addr = ClientAddress::new(config.node_name());
+        let domain = config.domain().name();
+        let addr = ClientAddress::new(domain);
 
         let mut bus = Bus {
-            domain: config.node_name().to_string(),
+            domain: domain.to_string(),
             connection,
             address: addr,
         };
@@ -72,18 +73,18 @@ impl Bus {
     }
 
     /// Generates the Redis connection Info
-    fn connection_info(config: &conf::BusConnection) -> Result<ConnectionInfo, String> {
+    fn connection_info(config: &conf::BusClient) -> Result<ConnectionInfo, String> {
         // Build the connection info by hand because it gives us more
         // flexibility/control than compiling a URL string.
 
-        let acct = config.connection_type().credentials();
         let redis_con = RedisConnectionInfo {
             db: 0,
-            username: Some(acct.username().to_string()),
-            password: Some(acct.password().to_string()),
+            username: Some(config.username().to_string()),
+            password: Some(config.password().to_string()),
         };
 
-        let con_addr = ConnectionAddr::Tcp(config.node_name().to_string(), config.port());
+        let domain = config.domain();
+        let con_addr = ConnectionAddr::Tcp(domain.name().to_string(), domain.port());
 
         Ok(ConnectionInfo {
             addr: con_addr,
