@@ -1,11 +1,17 @@
 use opensrf::Client;
 use opensrf::SettingsClient;
 use std::collections::HashMap;
+use opensrf::conf2::ConfigBuilder;
 
 const SERVICE: &str = "opensrf.rs-private";
 const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {
+
+    let mut config = ConfigBuilder::from_file("/openils/conf/opensrf_core.xml")?.build()?;
+    println!("CONFIG: {config:?}");
+
+    /*
     let conf = opensrf::init("service")?;
     let conf = conf.into_shared();
 
@@ -73,6 +79,7 @@ fn main() -> Result<(), String> {
             println!("opensrf.rs-public returned: {}", resp.dump());
         }
     }
+    */
 
     Ok(())
 }

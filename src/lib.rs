@@ -13,6 +13,7 @@ pub mod bus;
 pub mod classified;
 pub mod client;
 pub mod conf;
+pub mod conf2;
 pub mod logging;
 pub mod message;
 pub mod method;
