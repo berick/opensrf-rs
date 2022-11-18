@@ -306,7 +306,7 @@ impl ConfigBuilder {
                         username = t;
                     }
                 }
-                "passwd" => {
+                "passwd" | "password" => {
                     if let Some(t) = child.text() {
                         password = t;
                     }

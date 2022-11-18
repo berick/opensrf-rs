@@ -161,17 +161,6 @@ impl Worker {
         let service_addr = ServiceAddress::new(&self.service).full().to_string();
         let local_addr = self.client.address().full().to_string();
 
-        // Setup the stream for our service.  This is the top-level
-        // service address where new requests arrive.
-        if let Err(e) = self
-            .client_internal_mut()
-            .bus_mut()
-            .setup_stream(Some(&service_addr))
-        {
-            log::error!("{selfstr} cannot setup service stream at {service_addr}: {e}");
-            return;
-        }
-
         while requests < max_requests {
             let timeout: i32;
             let sent_to: &str;

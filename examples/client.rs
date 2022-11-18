@@ -2,7 +2,8 @@ use opensrf::Client;
 use opensrf::SettingsClient;
 use std::collections::HashMap;
 
-const SERVICE: &str = "opensrf.rs-private";
+const SERVICE: &str = "opensrf.settings";
+//const SERVICE: &str = "open-ils.cstore";
 const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {
@@ -61,6 +62,7 @@ fn main() -> Result<(), String> {
         println!("SYSTEM ECHO: {}", resp.dump());
     }
 
+    /*
     for _ in 0..10 {
         if let Some(resp) = client
             .sendrecv(
@@ -73,6 +75,7 @@ fn main() -> Result<(), String> {
             println!("opensrf.rs-public returned: {}", resp.dump());
         }
     }
+    */
 
     Ok(())
 }

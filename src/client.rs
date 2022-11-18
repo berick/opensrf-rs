@@ -281,10 +281,6 @@ impl Client {
         self.singleton().borrow_mut().bus_mut().clear_stream()
     }
 
-    pub fn setup_stream(&mut self, name: Option<&str>) -> Result<(), String> {
-        self.singleton().borrow_mut().bus_mut().setup_stream(name)
-    }
-
     pub fn send_router_command(
         &self,
         domain: &str,

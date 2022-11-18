@@ -3,10 +3,11 @@ use log::{debug, error, info, trace, warn};
 use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use opensrf::bus::Bus;
 use opensrf::conf;
+use opensrf::logging::Logger;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
 use std::thread;
+use std::sync::Arc;
 use getopts;
-use std::env;
 
 /// A service controller.
 ///
@@ -106,7 +107,7 @@ struct Routerdomain {
 
     services: Vec<ServiceEntry>,
 
-    config: conf::BusConnection,
+    config: conf::BusClient,
 }
 
 impl Routerdomain {
@@ -219,18 +220,18 @@ struct Router {
 
     remote_domains: Vec<Routerdomain>,
 
-    config: conf::Config,
+    config: Arc<conf::Config>,
 }
 
 impl Router {
-    pub fn new(config: conf::Config, domain: &str) -> Self {
+    pub fn new(config: Arc<conf::Config>, domain: &str) -> Self {
 
-        let busconf = match config.get_router_config(domain) {
+        let busconf = match config.get_router_conf(domain) {
             Some(rc) => rc.client(),
-            None => panic!("No router config for domain {domain}"),
+            None => panic!("No router config for domain {}", domain),
         };
 
-        let domain = busconf.domain().to_string();
+        let domain = busconf.domain().name().to_string();
         let addr = RouterAddress::new(&domain);
         let primary_domain = Routerdomain::new(&busconf);
 
@@ -244,7 +245,6 @@ impl Router {
 
     fn init(&mut self) -> Result<(), String> {
         self.primary_domain.connect()?;
-        self.setup_stream()?;
         Ok(())
     }
 
@@ -254,21 +254,6 @@ impl Router {
 
     fn remote_domains(&self) -> &Vec<Routerdomain> {
         &self.remote_domains
-    }
-
-    /// Setup the Redis stream/group we listen to
-    pub fn setup_stream(&mut self) -> Result<(), String> {
-        let sname = self.listen_address.full();
-
-        info!("Setting up primary stream={sname}");
-
-        let bus = &mut self
-            .primary_domain
-            .bus_mut()
-            .expect("Primary domain must have a bus");
-
-        bus.delete_named_stream(sname)?;
-        bus.setup_stream(Some(sname))
     }
 
     fn to_json_value(&self) -> json::JsonValue {
@@ -436,10 +421,8 @@ impl Router {
             let tm = match self.recv_one() {
                 Ok(m) => m,
                 Err(s) => {
-                    error!(
-                        "Exiting on error receiving data from primary connection: {}",
-                        s
-                    );
+                    eprintln!("Router exiting on failed recv(): {s}");
+                    error!("Exiting. Error receiving data from primary connection: {s}");
                     return;
                 }
             };
@@ -621,28 +604,40 @@ impl Router {
 
 fn main() {
     let mut ops = getopts::Options::new();
-    let args: Vec<String> = env::args().collect();
+    ops.optmulti("d", "domain", "Domain", "DOMAIN");
 
-    opts.optmulti("d", "domain", "Domain", "DOMAIN");
+    let init_ops = opensrf::InitOptions { skip_logging: true };
 
-    let mut config = opensrf::init_with_options(&mut ops).unwrap();
+    let (config, params) = opensrf::init_with_options(&init_ops, &mut ops).unwrap();
+    let config = config.into_shared();
 
-    let params = match opts.parse(&args[1..]) {
-        Ok(p) => p,
-        Err(e) => {
-            return Err(format!("Error parsing options: {e}"));
-        }
-    };
-
-    // Each name gets 1 router for each of its 2 public/private sudbomains.
-    // Each runs in its own thread.
+    // A router for each specified domain runs within its own thread.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
-    for domain in params.opt_strs("domain").iter() {
-        let conf = config.clone();
+    let domains = params.opt_strs("domain");
 
-        threads.push(thread::spawn(|| {
-            let mut router = Router::new(conf, domain);
+    if domains.len() == 0 {
+        panic!("Router requries at least one domain");
+    }
+
+    // Our global Logger is configured with the settings for the
+    // router for the first domain specified.
+    let domain0 = &domains[0];
+    let rconf = match config.get_router_conf(domain0) {
+        Some(c) => c,
+        None => panic!("No router configuration found for domain {}", domain0),
+    };
+
+    if let Err(e) = Logger::new(rconf.client().logging()).unwrap().init() {
+        panic!("Error initializing logger: {}", e);
+    }
+
+    for domain in domains.iter() {
+        let conf = config.clone();
+        let domain = domain.clone();
+
+        threads.push(thread::spawn(move || {
+            let mut router = Router::new(conf, &domain);
             router.init().unwrap();
             router.listen();
         }));

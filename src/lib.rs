@@ -26,6 +26,10 @@ pub mod worker;
 #[cfg(test)]
 mod tests;
 
+pub struct InitOptions {
+    pub skip_logging: bool,
+}
+
 const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.xml";
 
 /// Read common command line parameters, parse the core config, apply
@@ -33,7 +37,12 @@ const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.xml";
 ///
 /// This does not connect to the bus.
 pub fn init() -> Result<conf::Config, String> {
-    let (config, _) = init_with_options(&mut getopts::Options::new())?;
+
+    let (config, _) = init_with_options(
+        &InitOptions { skip_logging: false },
+        &mut getopts::Options::new()
+    )?;
+
     Ok(config)
 }
 
@@ -41,12 +50,13 @@ pub fn init() -> Result<conf::Config, String> {
 /// of getopts::Options, which are then augmented with the standard
 /// OpenSRF command line options.
 pub fn init_with_options(
+    options: &InitOptions,
     opts: &mut getopts::Options,
 ) -> Result<(conf::Config, getopts::Matches), String> {
     let args: Vec<String> = env::args().collect();
 
     opts.optflag("l", "localhost", "Use Localhost");
-    opts.optopt("d", "domain", "domain", "domain");
+    opts.optopt("h", "hostname", "hostname", "hostname");
     opts.optopt("c", "osrf-config", "OpenSRF Config", "OSRF_CONFIG");
 
     let params = match opts.parse(&args[1..]) {
@@ -56,7 +66,8 @@ pub fn init_with_options(
         }
     };
 
-    let filename = match params.opt_get_default("osrf-config", DEFAULT_OSRF_CONFIG.to_string()) {
+    let filename = match params.opt_get_default(
+        "osrf-config", DEFAULT_OSRF_CONFIG.to_string()) {
         Ok(f) => f,
         Err(e) => {
             return Err(format!("Error reading osrf-config option: {e}"));
@@ -69,8 +80,10 @@ pub fn init_with_options(
         config.set_hostname("localhost");
     }
 
-    if let Err(e) = Logger::new(config.client().logging())?.init() {
-        return Err(format!("Error initializing logger: {e}"));
+    if !options.skip_logging {
+        if let Err(e) = Logger::new(config.client().logging())?.init() {
+            return Err(format!("Error initializing logger: {e}"));
+        }
     }
 
     Ok((config, params))

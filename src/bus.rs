@@ -46,30 +46,7 @@ impl Bus {
             address: addr,
         };
 
-        bus.setup_stream(None)?;
-
         Ok(bus)
-    }
-
-    pub fn setup_stream(&mut self, name: Option<&str>) -> Result<(), String> {
-        let sname = match name {
-            Some(n) => n.to_string(),
-            None => self.address().full().to_string(),
-        };
-
-        debug!("{} setting up stream={}", self, sname);
-
-        let created: Result<(), _> = self
-            .connection()
-            .xgroup_create_mkstream(&sname, &sname, "$");
-
-        if let Err(_) = created {
-            // TODO see about differentiating error types so we can
-            // report real errors.
-            debug!("{} stream group {} already exists", self, sname);
-        }
-
-        Ok(())
     }
 
     /// Generates the Redis connection Info
@@ -107,80 +84,59 @@ impl Bus {
     /// Returns at most one String pulled from the queue or None if the
     /// pop times out or is interrupted.
     ///
-    /// The string will be valid JSON string.
+    /// The string will be whole, unparsed JSON string.
     fn recv_one_chunk(
         &mut self,
-        timeout: i32,
-        stream: Option<&str>,
+        mut timeout: i32,
+        recipient: Option<&str>,
     ) -> Result<Option<String>, String> {
-        let sname = match stream {
+
+        let recipient = match recipient {
             Some(s) => s.to_string(),
             None => self.address().full().to_string(),
         };
 
-        trace!(
-            "recv_one_chunk() timeout={} for recipient {}",
-            timeout,
-            sname
-        );
+        let value: String;
 
-        let mut read_opts = StreamReadOptions::default()
-            .count(1)
-            .noack()
-            .group(&sname, &sname);
+        if timeout == 0 { // non-blocking
 
-        if timeout != 0 {
-            if timeout < 0 {
-                // block indefinitely
-                read_opts = read_opts.block(0);
-            } else {
-                read_opts = read_opts.block(timeout as usize * 1000); // milliseconds
-            }
-        }
-
-        let reply: StreamReadReply =
-            match self
-                .connection()
-                .xread_options(&[&sname], &[">"], &read_opts)
-            {
-                Ok(r) => r,
+            // LPOP returns a scalar response.
+            value = match self.connection().lpop(&recipient, None) {
+                Ok(c) => c,
                 Err(e) => match e.kind() {
                     redis::ErrorKind::TypeError => {
                         // Will read a Nil value on timeout.  That's OK.
-                        trace!("{} stream read returned nothing", self);
                         return Ok(None);
                     }
-                    _ => {
-                        return Err(format!("XREAD error: {e}"));
-                    }
+                    _ => return Err(format!("recv_one_chunk failed: {e}"))
                 },
             };
 
-        let mut value_op: Option<String> = None;
+        } else { // Blocking
 
-        for StreamKey { key, ids } in reply.keys {
-            trace!("{} read value from stream {}", self, key);
-
-            for StreamId { id, map } in ids {
-                trace!("{} read message ID {}", self, id);
-
-                if let Some(message) = map.get("message") {
-                    if let Value::Data(bytes) = message {
-                        if let Ok(s) = String::from_utf8(bytes.to_vec()) {
-                            value_op = Some(s);
-                        } else {
-                            error!("{} received unexpected stream data: {:?}", self, message);
-                            return Ok(None);
-                        };
-                    } else {
-                        error!("{} received unexpected stream data", self);
-                        return Ok(None);
-                    }
-                };
+            // BLPOP returns the name of the popped list and the value.
+            if timeout < 0 {
+                // Timeout 0 means block indefinitely in Redis.
+                timeout = 0;
             }
+
+            let resp: Vec<String> =
+                match self.connection().blpop(&recipient, timeout as usize) {
+                Ok(r) => r,
+                Err(e) => return Err(
+                    format!("Redis list pop error: {e} recipient={recipient}"))
+            };
+
+            if resp.len() == 0 { // No message received
+                return Ok(None);
+            }
+
+            value = resp[1].to_string(); // resp = [key, value]
         }
 
-        Ok(value_op)
+        trace!("recv_one_value() pulled from bus: {}", value);
+
+        Ok(Some(value))
     }
 
     /// Returns at most one JSON value pulled from the queue or None if
@@ -285,15 +241,11 @@ impl Bus {
 
         trace!("send() writing chunk to={}: {}", recipient, json_str);
 
-        let maxlen = StreamMaxlen::Approx(1000); // TODO CONFIG
-
-        let res: Result<String, _> =
-            self.connection()
-                .xadd_maxlen(recipient, maxlen, "*", &[("message", json_str)]);
+        let res: Result<i32, _> = self.connection().rpush(recipient, json_str);
 
         if let Err(e) = res {
-            return Err(format!("Error in send(): {e}"));
-        };
+            return Err(format!("Error in send() {e}"));
+        }
 
         Ok(())
     }
@@ -307,29 +259,10 @@ impl Bus {
     pub fn clear_named_stream(&mut self, stream: &str) -> Result<(), String> {
         log::trace!("Clearing stream {stream}");
 
-        let maxlen = StreamMaxlen::Equals(0);
-        let res: Result<i32, _> = self.connection().xtrim(stream, maxlen);
-
-        if let Err(e) = res {
-            return Err(format!("Error in clear_stream(): {e}"));
-        }
-
-        Ok(())
-    }
-
-    /// Removes our stream, which also removes our consumer group
-    pub fn delete_stream(&mut self) -> Result<(), String> {
-        let sname = self.address().full().to_string();
-        self.delete_named_stream(&sname)
-    }
-
-    pub fn delete_named_stream(&mut self, stream: &str) -> Result<(), String> {
-        log::debug!("Deleting stream {stream}");
-
         let res: Result<i32, _> = self.connection().del(stream);
 
         if let Err(e) = res {
-            return Err(format!("Error in delete_stream(): {e}"));
+            return Err(format!("Error in clear_stream(): {e}"));
         }
 
         Ok(())
@@ -340,7 +273,7 @@ impl Bus {
     /// Redis connectionts are closed on free, so no specific
     /// disconnect action is taken.
     pub fn disconnect(&mut self) -> Result<(), String> {
-        self.delete_stream()
+        self.clear_stream()
     }
 }
 
