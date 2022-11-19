@@ -328,6 +328,12 @@ impl Session {
             None => params.params().to_owned(),
         };
 
+        if !self.connected() {
+            // Discard any knowledge about previous communication
+            // with a specific worker since we are not connected.
+            self.worker_addr = None;
+        }
+
         let tmsg = TransportMessage::with_body(
             self.destination_addr().full(),
             self.client.address().full(),
