@@ -1,9 +1,7 @@
 use super::addr::ClientAddress;
 use super::conf;
 use super::message::TransportMessage;
-use log::{debug, error, trace};
-use redis::streams::{StreamId, StreamKey, StreamMaxlen, StreamReadOptions, StreamReadReply};
-use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo, Value};
+use redis::{Commands, ConnectionAddr, ConnectionInfo, RedisConnectionInfo};
 use std::fmt;
 use std::time;
 
@@ -21,7 +19,7 @@ impl Bus {
     pub fn new(config: &conf::BusClient) -> Result<Self, String> {
         let info = Bus::connection_info(config)?;
 
-        trace!("Bus::new() connecting to {:?}", info);
+        log::trace!("Bus::new() connecting to {:?}", info);
 
         let client = match redis::Client::open(info) {
             Ok(c) => c,
@@ -40,7 +38,7 @@ impl Bus {
         let domain = config.domain().name();
         let addr = ClientAddress::new(domain);
 
-        let mut bus = Bus {
+        let bus = Bus {
             domain: domain.to_string(),
             connection,
             address: addr,
@@ -134,7 +132,7 @@ impl Bus {
             value = resp[1].to_string(); // resp = [key, value]
         }
 
-        trace!("recv_one_value() pulled from bus: {}", value);
+        log::trace!("recv_one_value() pulled from bus: {}", value);
 
         Ok(Some(value))
     }
@@ -153,7 +151,7 @@ impl Bus {
             }
         };
 
-        trace!("{self} read json from the bus: {json_string}");
+        log::trace!("{self} read json from the bus: {json_string}");
 
         match json::parse(&json_string) {
             Ok(json_val) => Ok(Some(json_val)),
@@ -239,7 +237,7 @@ impl Bus {
     pub fn send_to(&mut self, msg: &TransportMessage, recipient: &str) -> Result<(), String> {
         let json_str = msg.to_json_value().dump();
 
-        trace!("send() writing chunk to={}: {}", recipient, json_str);
+        log::trace!("send() writing chunk to={}: {}", recipient, json_str);
 
         let res: Result<i32, _> = self.connection().rpush(recipient, json_str);
 

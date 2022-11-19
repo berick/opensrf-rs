@@ -1,11 +1,8 @@
 use gethostname::gethostname;
-use std::collections::HashMap;
 use std::fs;
 use std::str::FromStr;
 use std::sync::Arc;
 use syslog;
-use yaml_rust::yaml;
-use yaml_rust::YamlLoader;
 use roxmltree;
 
 const DEFAULT_BUS_PORT: u16 = 6379;
@@ -39,7 +36,7 @@ impl LogOptions {
     }
 }
 
-/// A Message Bus Domain
+/// A single message bus endpoint domain/host.
 #[derive(Debug, Clone)]
 pub struct BusDomain {
     name: String,
@@ -54,8 +51,6 @@ impl BusDomain {
         self.port
     }
 }
-
-
 
 /// A set of bus login credentials
 #[derive(Debug, Clone)]
@@ -443,6 +438,9 @@ impl Config {
     }
     pub fn client(&self) -> &BusClient {
         &self.client
+    }
+    pub fn client_mut(&mut self) -> &mut BusClient {
+        &mut self.client
     }
     pub fn hostname(&self) -> &str {
         &self.hostname

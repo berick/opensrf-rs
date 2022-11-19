@@ -2,8 +2,9 @@ use opensrf::Client;
 use opensrf::SettingsClient;
 use std::collections::HashMap;
 
-const SERVICE: &str = "opensrf.settings";
-//const SERVICE: &str = "open-ils.cstore";
+//const SERVICE: &str = "opensrf.settings";
+const SERVICE: &str = "open-ils.cstore";
+//const SERVICE: &str = "opensrf.rs-public";
 const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {

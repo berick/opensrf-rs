@@ -1,10 +1,11 @@
 use opensrf::Client;
 
-const SERVICE: &str = "opensrf.settings";
+//const SERVICE: &str = "opensrf.settings";
+const SERVICE: &str = "opensrf.rs-public";
 const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {
-    let conf = opensrf::init("service")?;
+    let conf = opensrf::init()?;
 
     let mut client = Client::connect(conf.into_shared())?;
 
@@ -39,7 +40,6 @@ fn main() -> Result<(), String> {
     // --------------------------------------------------------
     // ONE-OFF REQUEST WITH ITERATOR --------------------------
 
-    /*
     let params = vec!["Hello", "World", "Pamplemousse"];
 
     for resp in client.sendrecv(SERVICE, METHOD, &params)? {
@@ -52,7 +52,6 @@ fn main() -> Result<(), String> {
             println!("Counter is {}", resp.dump());
         }
     }
-    */
 
     Ok(())
 }
