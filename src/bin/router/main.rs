@@ -226,6 +226,8 @@ struct Router {
 impl Router {
     pub fn new(config: Arc<conf::Config>, domain: &str) -> Self {
 
+        log::info!("Starting router on domain: {domain}");
+
         let busconf = match config.get_router_conf(domain) {
             Some(rc) => rc.client(),
             None => panic!("No router config for domain {}", domain),
@@ -611,17 +613,21 @@ fn main() {
     let (config, params) = opensrf::init_with_options(&init_ops, &mut ops).unwrap();
     let config = config.into_shared();
 
-    // A router for each specified domain runs within its own thread.
-    let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
-
-    let domains = params.opt_strs("domain");
+    let mut domains = params.opt_strs("domain");
 
     if domains.len() == 0 {
-        panic!("Router requries at least one domain");
+        domains = config.routers()
+            .iter().map(|r| r.client().domain().name().to_string()).collect();
+
+        if domains.len() == 0 {
+            panic!("Router requries at least one domain");
+        }
     }
 
+    println!("Starting router for domains: {domains:?}");
+
     // Our global Logger is configured with the settings for the
-    // router for the first domain specified.
+    // router for the first domain found.
     let domain0 = &domains[0];
     let rconf = match config.get_router_conf(domain0) {
         Some(c) => c,
@@ -631,6 +637,9 @@ fn main() {
     if let Err(e) = Logger::new(rconf.client().logging()).unwrap().init() {
         panic!("Error initializing logger: {}", e);
     }
+
+    // A router for each specified domain runs within its own thread.
+    let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
     for domain in domains.iter() {
         let conf = config.clone();

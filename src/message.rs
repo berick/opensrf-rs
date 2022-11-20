@@ -300,12 +300,20 @@ impl TransportMessage {
             tmsg.set_router_reply(rc);
         }
 
-        if let json::JsonValue::Array(ref arr) = json_obj["body"] {
-            for body in arr {
-                if let Some(b) = Message::from_json_value(&body) {
+        match json_obj["body"] {
+            json::JsonValue::Array(ref arr) => {
+                for body in arr {
+                    if let Some(b) = Message::from_json_value(&body) {
+                        tmsg.body_as_mut().push(b);
+                    }
+                }
+            }
+            _ => {
+                // Message body is typically an array, but may be a single
+                // body entry.
+                let body = &json_obj["body"];
+                if let Some(b) = Message::from_json_value(body) {
                     tmsg.body_as_mut().push(b);
-                } else {
-                    warn!("Could not create Message from body: {}", body.dump());
                 }
             }
         }
@@ -460,7 +468,7 @@ impl Message {
 
         let mut msg = Message::new(mtype, thread_trace, payload);
 
-        if let Some(tz) = msg_hash["timezone"].as_str() {
+        if let Some(tz) = msg_hash["tz"].as_str() {
             msg.set_timezone(tz);
         }
 
@@ -728,17 +736,15 @@ impl Method {
             }
         };
 
-        let ref params = msg_hash["params"];
+        let mut params = Vec::new();
 
-        if !params.is_array() {
-            return None;
+        if let json::JsonValue::Array(arr) = &msg_hash["params"] {
+            params = arr.iter().map(|p| p.clone()).collect();
         }
-
-        let p = params.members().map(|p| p.clone()).collect();
 
         Some(Method {
             method,
-            params: p,
+            params,
             msg_class: msg_class.to_string(),
         })
     }
