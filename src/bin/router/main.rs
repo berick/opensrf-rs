@@ -605,9 +605,7 @@ fn main() {
     let mut ops = getopts::Options::new();
     ops.optmulti("d", "domain", "Domain", "DOMAIN");
 
-    let init_ops = opensrf::InitOptions { skip_logging: true };
-
-    let (config, params) = opensrf::init_with_options(&init_ops, &mut ops).unwrap();
+    let (config, params) = opensrf::init_with_options(&mut ops).unwrap();
     let config = config.into_shared();
 
     let mut domains = params.opt_strs("domain");

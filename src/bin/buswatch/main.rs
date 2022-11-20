@@ -1,16 +1,21 @@
+use chrono::{Local, DateTime};
+use chrono::prelude::*;
 use std::sync::Arc;
 use std::time::Duration;
 use std::thread;
 use getopts;
 use opensrf::conf;
 use opensrf::bus;
-use opensrf::client;
 use opensrf::logging::Logger;
+
+const DEFAULT_WAIT_TIME_MILLIS: u64 = 1000;
 
 struct BusWatch {
     config: Arc<conf::Config>,
     domain: String,
     bus: bus::Bus,
+    wait_time: u64,
+    start_time: DateTime<Local>,
 }
 
 impl BusWatch {
@@ -26,31 +31,61 @@ impl BusWatch {
             Err(e) => panic!("Cannot connect bus: {}", e),
         };
 
+        let wait_time = DEFAULT_WAIT_TIME_MILLIS;
+
         BusWatch {
             bus,
             config,
+            wait_time,
+            start_time: Local::now(),
             domain: domain.to_string()
         }
     }
 
     pub fn watch(&mut self) {
 
+        let mut obj = json::object!{
+            "domain": json::from(self.domain.as_str()),
+            "start_time": json::from(format!("{}", self.start_time.format("%FT%T%z"))),
+            "stats": {}
+        };
+
         loop {
+
+            thread::sleep(Duration::from_millis(self.wait_time));
 
             let keys = match self.bus.keys("opensrf:*") {
                 Ok(k) => k,
-                Err(e) => panic!("Exiting on keys() error: {}", e),
+                Err(e) => {
+                    log::error!("Error in keys() command: {e}");
+                    continue;
+                }
             };
+
+            if keys.len() == 0 {
+                continue;
+            }
 
             for key in keys.iter() {
                 match self.bus.llen(key) {
-                    Ok(l) => println!("{key} length={l}"),
-                    Err(e) => panic!("Exiting on failed llen command: {}", e),
+                    Ok(l) => {
+                        // The list may have cleared in the time between the
+                        // time we called keys() and llen().
+                        if l > 0 {
+                            obj["stats"][key] = json::from(l);
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Error reading list length list={key} error={e}");
+                        break;
+                    }
                 }
             }
 
-            // TODO configurable wait time.
-            thread::sleep(Duration::from_millis(2000));
+            obj["current_time"] =
+                json::from(format!("{}", Local::now().format("%FT%T%z")));
+
+            println!("{}", obj.dump());
         }
     }
 }
@@ -60,37 +95,23 @@ fn main() {
 
     ops.optmulti("d", "domain", "Domain", "DOMAIN");
 
-    let init_ops = opensrf::InitOptions { skip_logging: true };
-
-    let (config, params) = opensrf::init_with_options(&init_ops, &mut ops).unwrap();
+    let (config, params) = opensrf::init_with_options(&mut ops).unwrap();
     let config = config.into_shared();
 
     let mut domains = params.opt_strs("domain");
 
     if domains.len() == 0 {
+        // Watch all routed domains by default.
         domains = config.routers()
             .iter().map(|r| r.client().domain().name().to_string()).collect();
-
         if domains.len() == 0 {
-            panic!("Router requries at least one domain");
+            panic!("Watcher requires at least on domain");
         }
     }
 
     println!("Starting buswatch for domains: {domains:?}");
 
-    // Our global Logger is configured with the settings for the
-    // router for the first domain found.
-    let domain0 = &domains[0];
-    let rconf = match config.get_router_conf(domain0) {
-        Some(c) => c,
-        None => panic!("No router configuration found for domain {}", domain0),
-    };
-
-    if let Err(e) = Logger::new(rconf.client().logging()).unwrap().init() {
-        panic!("Error initializing logger: {}", e);
-    }
-
-    // A router for each specified domain runs within its own thread.
+    // A watcher for each domain runs within its own thread.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
     for domain in domains.iter() {
@@ -103,7 +124,7 @@ fn main() {
         }));
     }
 
-    // Block here while the routers are running.
+    // Wait for threads to complete.
     for thread in threads {
         thread.join().ok();
     }

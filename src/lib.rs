@@ -30,6 +30,14 @@ pub struct InitOptions {
     pub skip_logging: bool,
 }
 
+impl InitOptions {
+    pub fn new() -> InitOptions {
+        InitOptions {
+            skip_logging: false,
+        }
+    }
+}
+
 const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.xml";
 
 /// Read common command line parameters, parse the core config, apply
@@ -37,21 +45,22 @@ const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.xml";
 ///
 /// This does not connect to the bus.
 pub fn init() -> Result<conf::Config, String> {
-
-    let (config, _) = init_with_options(
-        &InitOptions { skip_logging: false },
-        &mut getopts::Options::new()
-    )?;
-
+    let (config, _) = init_with_options(&mut getopts::Options::new())?;
     Ok(config)
+}
+
+pub fn init_with_options(
+    opts: &mut getopts::Options,
+) -> Result<(conf::Config, getopts::Matches), String> {
+    init_with_more_options(opts, InitOptions::new())
 }
 
 /// Same as init(), but allows the caller to pass in a prepopulated set
 /// of getopts::Options, which are then augmented with the standard
 /// OpenSRF command line options.
-pub fn init_with_options(
-    options: &InitOptions,
+pub fn init_with_more_options(
     opts: &mut getopts::Options,
+    options: InitOptions,
 ) -> Result<(conf::Config, getopts::Matches), String> {
     let args: Vec<String> = env::args().collect();
 
