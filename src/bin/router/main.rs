@@ -591,12 +591,9 @@ impl Router {
             .expect("We always maintain a connection on the primary domain");
 
         loop {
-            // Looping should not be required here, but can't hurt.
-
-            if let Some(tm) = bus.recv(-1, Some(self.listen_address.full()))? {
+            // Break periodically
+            if let Some(tm) = bus.recv(10, Some(self.listen_address.full()))? {
                 return Ok(tm);
-            } else {
-                debug!("recv() on main bus address returned None.  Will keep trying");
             }
         }
     }

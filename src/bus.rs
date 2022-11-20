@@ -273,6 +273,27 @@ impl Bus {
     pub fn disconnect(&mut self) -> Result<(), String> {
         self.clear_stream()
     }
+
+    // See Redis KEYS command.
+    pub fn keys(&mut self, pattern: &str) -> Result<Vec<String>, String> {
+        let res: Result<Vec<String>, _> = self.connection().keys(pattern);
+
+        if let Err(e) = res {
+            return Err(format!("Error in keys(): {e}"));
+        }
+
+        Ok(res.unwrap())
+    }
+
+    pub fn llen(&mut self, key: &str) -> Result<i32, String> {
+        let res: Result<i32, _> = self.connection().llen(key);
+
+        if let Err(e) = res {
+            return Err(format!("Error in llen(): {e}"));
+        }
+
+        Ok(res.unwrap())
+    }
 }
 
 impl fmt::Display for Bus {

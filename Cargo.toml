@@ -20,6 +20,9 @@ getopts = "0.2.21"
 [[bin]]
 name = "router"
 
+[[bin]]
+name = "buswatch"
+
 [[example]]
 name = "client"
 
