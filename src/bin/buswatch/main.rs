@@ -6,7 +6,6 @@ use std::thread;
 use getopts;
 use opensrf::conf;
 use opensrf::bus;
-use opensrf::logging::Logger;
 
 const DEFAULT_WAIT_TIME_MILLIS: u64 = 1000;
 
@@ -46,14 +45,16 @@ impl BusWatch {
 
         let mut obj = json::object!{
             "domain": json::from(self.domain.as_str()),
-            "start_time": json::from(format!("{}", self.start_time.format("%FT%T%z"))),
-            "stats": {}
+            "start_time":
+                json::from(format!("{}", self.start_time.format("%FT%T%z"))),
         };
 
         loop {
 
             thread::sleep(Duration::from_millis(self.wait_time));
 
+            // Check all opensrf keys.
+            // NOTE could break these up into router, service, and client keys.
             let keys = match self.bus.keys("opensrf:*") {
                 Ok(k) => k,
                 Err(e) => {
@@ -66,6 +67,9 @@ impl BusWatch {
                 continue;
             }
 
+            obj["stats"] = json::JsonValue::new_object();
+            obj["errors"] = json::JsonValue::new_array();
+
             for key in keys.iter() {
                 match self.bus.llen(key) {
                     Ok(l) => {
@@ -76,7 +80,9 @@ impl BusWatch {
                         }
                     }
                     Err(e) => {
-                        log::error!("Error reading list length list={key} error={e}");
+                        let err = format!("Error reading LLEN list={key} error={e}");
+                        log::error!("{err}");
+                        obj["errors"].push(json::from(err)).ok();
                         break;
                     }
                 }

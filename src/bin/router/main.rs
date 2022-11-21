@@ -4,6 +4,7 @@ use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use opensrf::bus::Bus;
 use opensrf::conf;
 use opensrf::logging::Logger;
+use opensrf::message;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
 use std::thread;
 use std::sync::Arc;
@@ -459,6 +460,10 @@ impl Router {
     ) -> Result<(), String> {
         let service = to_addr.service();
 
+        if service.eq("router") {
+            return self.handle_router_api_request(tm);
+        }
+
         if self.primary_domain.has_service(service) {
             self.primary_domain.route_count += 1;
             return self.primary_domain.send_to_domain(tm);
@@ -512,6 +517,81 @@ impl Router {
         // on our primary domain, since clients only ever talk to
         // the router on their own domain.
         self.primary_domain.send_to_domain(tm)
+    }
+
+    /// Some Router requests are packaged as method calls.  Handle those here.
+    fn handle_router_api_request(&mut self, tm: TransportMessage) -> Result<(), String> {
+
+        let from = tm.from();
+
+        for msg in tm.body().iter() {
+
+            let method = match msg.payload() {
+                Payload::Method(m) => m,
+                _ => return Err(format!(
+                    "Router cannot process message: {}", tm.to_json_value().dump()
+                ))
+            };
+
+            let value = self.process_router_api_request(&method)?;
+
+            let reply = Message::new(
+                MessageType::Result,
+                msg.thread_trace(),
+                Payload::Result(message::Result::new(
+                    MessageStatus::Ok,
+                    "osrfResponse",
+                    "OK",
+                    value,
+                )),
+            );
+
+            let myaddr = match &self.primary_domain.bus {
+                Some(b) => b.address(),
+                None => return Err(format!("Primary domain has no bus!")),
+            };
+
+            let mut tmsg = TransportMessage::with_body(
+                from,
+                myaddr.full(),
+                tm.thread(),
+                reply,
+            );
+
+            tmsg.body_as_mut().push(
+                Message::new(
+                    MessageType::Status,
+                    msg.thread_trace(),
+                    Payload::Status(message::Status::new(
+                        MessageStatus::Complete,
+                        "Request Complete",
+                        "osrfStatus",
+                    ))
+                )
+            );
+
+            self.primary_domain.send_to_domain(tmsg)?;
+        }
+
+        Ok(())
+    }
+
+    fn process_router_api_request(&mut self, m: &message::Method) -> Result<json::JsonValue, String> {
+
+        match m.method() {
+
+            "opensrf.router.info.class.list" => {
+                // Caller wants a list of service names
+
+                let names: Vec<String> = self.primary_domain.services()
+                    .iter()
+                    .map(|s| s.name().to_string())
+                    .collect();
+
+                Ok(json::from(names))
+            }
+            _ => Err(format!("Router cannot handle api {}", m.method()))
+        }
     }
 
     fn handle_router_command(&mut self, tm: TransportMessage) -> Result<(), String> {
@@ -603,9 +683,14 @@ impl Router {
 
 fn main() {
     let mut ops = getopts::Options::new();
+
     ops.optmulti("d", "domain", "Domain", "DOMAIN");
 
-    let (config, params) = opensrf::init_with_options(&mut ops).unwrap();
+    let (config, params) = opensrf::init_with_more_options(
+        &mut ops,
+        opensrf::InitOptions { skip_logging: true }
+    ).unwrap();
+
     let config = config.into_shared();
 
     let mut domains = params.opt_strs("domain");
