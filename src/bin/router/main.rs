@@ -192,7 +192,7 @@ impl Routerdomain {
 
     /// Send a message to this domain via our domain connection.
     fn send_to_domain(&mut self, tm: TransportMessage) -> Result<(), String> {
-        trace!(
+        log::trace!(
             "send_to_domain({}) routing message to {}",
             self.domain(),
             tm.to()
@@ -345,8 +345,6 @@ impl Router {
     fn handle_register(&mut self, address: ClientAddress, service: &str) -> Result<(), String> {
         let domain = address.domain(); // Known to be a client addr.
 
-        info!("Registering new domain={}", domain);
-
         let r_domain = self.find_or_create_domain(domain)?;
 
         for svc in &mut r_domain.services {
@@ -439,7 +437,10 @@ impl Router {
     fn route_message(&mut self, tm: TransportMessage) -> Result<(), String> {
         let to = tm.to();
 
-        debug!("Received message destined for {}", to);
+        debug!(
+            "Router at {} received message destined for {to}",
+            self.primary_domain.domain()
+        );
 
         let addr = BusAddress::new_from_string(to)?;
 

@@ -34,6 +34,23 @@ impl LogOptions {
     pub fn log_level(&self) -> &Option<log::LevelFilter> {
         &self.log_level
     }
+    pub fn set_log_level(&mut self, level: &str) {
+        self.log_level = Some(LogOptions::log_level_from_str(level));
+    }
+
+    ///
+    ///
+    /// Defaults to Info
+    pub fn log_level_from_str(level: &str) -> log::LevelFilter {
+        match level {
+            "1" => log::LevelFilter::Error,
+            "2" => log::LevelFilter::Warn,
+            "3" => log::LevelFilter::Info,
+            "4" => log::LevelFilter::Debug,
+            "5" => log::LevelFilter::Trace,
+            _   => log::LevelFilter::Info
+        }
+    }
 }
 
 /// A single message bus endpoint domain/host.
@@ -76,6 +93,9 @@ impl BusClient {
     pub fn logging(&self) -> &LogOptions {
         &self.logging
     }
+    pub fn logging_mut(&mut self) -> &mut LogOptions {
+        &mut self.logging
+    }
     pub fn settings_config(&self) -> Option<&str> {
         self.settings_config.as_deref()
     }
@@ -85,6 +105,12 @@ impl BusClient {
     pub fn set_domain(&mut self, domain: &str) {
         // Assumes other aspects of the domain are identical
         self.domain.name = domain.to_string();
+    }
+    pub fn set_username(&mut self, username: &str) {
+        self.username = username.to_string();
+    }
+    pub fn set_password(&mut self, password: &str) {
+        self.password = password.to_string();
     }
 }
 
@@ -156,14 +182,14 @@ impl ConfigBuilder {
 
         let doc = match roxmltree::Document::parse(xml) {
             Ok(d) => d,
-            Err(e) => return Err(format!("Error parsing XML: {e}"))
+            Err(e) => Err(format!("Error parsing XML: {e}"))?
         };
 
         let conf_node = match doc.root()
             .children()
             .filter(|n| n.has_tag_name("config")).next() {
             Some(n) => n,
-            None => return Err(format!("Missing 'config' element"))
+            None => Err(format!("Missing 'config' element"))?
         };
 
         let mut builder = ConfigBuilder {
@@ -212,7 +238,7 @@ impl ConfigBuilder {
             // Router client configs are (mostly) nested in a <transport> element.
             let tnode = match rnode.children().filter(|c| c.has_tag_name("transport")).next() {
                 Some(tn) => tn,
-                None => return Err(format!("Routers require a transport config")),
+                None => Err(format!("Routers require a transport config"))?,
             };
 
             let mut client = self.unpack_client_node(&tnode)?;
@@ -258,7 +284,7 @@ impl ConfigBuilder {
 
         let domain = match self.child_node_text(rnode, "domain") {
             Some(d) => d.to_string(),
-            None => return Err(format!("Client router node has no domain: {rnode:?}")),
+            None => Err(format!("Client router node has no domain: {rnode:?}"))?,
         };
 
         let mut cr = ClientRouter {
@@ -330,14 +356,14 @@ impl ConfigBuilder {
         let domain_name = match node.children().filter(|c| c.has_tag_name("domain")).next() {
             Some(n) => match n.text() {
                 Some(t) => t,
-                None => return Err(format!("'domain' node is empty")),
+                None => Err(format!("'domain' node is empty"))?,
             }
             None => match node.children().filter(|c| c.has_tag_name("server")).next() {
                 Some(n) => match n.text() {
                     Some(t) => t,
-                    None => return Err(format!("'server' node is empty")),
+                    None => Err(format!("'server' node is empty"))?,
                 },
-                None => return Err(format!("Node has no domain or server")),
+                None => Err(format!("Node has no domain or server"))?,
             }
         };
 
@@ -393,14 +419,7 @@ impl ConfigBuilder {
                 }
                 "loglevel" => {
                     if let Some(level_num) = child.text() {
-                        ops.log_level = Some(match level_num {
-                            "1" => log::LevelFilter::Error,
-                            "2" => log::LevelFilter::Warn,
-                            "3" => log::LevelFilter::Info,
-                            "4" => log::LevelFilter::Debug,
-                            "5" => log::LevelFilter::Trace,
-                            _   => log::LevelFilter::Info
-                        });
+                        ops.log_level = Some(LogOptions::log_level_from_str(level_num));
                     }
                 }
                 _ => {}

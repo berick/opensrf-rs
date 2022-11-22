@@ -7,7 +7,15 @@ use getopts;
 use opensrf::conf;
 use opensrf::bus;
 
-const DEFAULT_WAIT_TIME_MILLIS: u64 = 1000;
+const DEFAULT_WAIT_TIME_MILLIS: u64 = 2000;
+
+// Redis lists are deleted every time the last value in the list is
+// popped.  If a list key persists for many minutes, it means the list
+// is never fully drained, suggesting the backend responsible for
+// popping values from the list is not longer alive OR is perpetually
+// under extremely heavy load.  Tell keys to delete themselves after
+// this many seconds of being unable to drain the list.
+const DEFAULT_KEY_EXPIRE_SECS: u64 = 1800; // 30 minutes
 
 struct BusWatch {
     config: Arc<conf::Config>,
@@ -20,12 +28,20 @@ struct BusWatch {
 impl BusWatch {
     pub fn new(config: Arc<conf::Config>, domain: &str) -> Self {
 
-        let busconf = match config.get_router_conf(domain) {
-            Some(rc) => rc.client(),
+        let mut busconf = match config.get_router_conf(domain) {
+            Some(rc) => rc.client().clone(),
             None => panic!("No router config for domain {}", domain),
         };
 
-        let bus = match bus::Bus::new(busconf) {
+        // We connect using info on our routers, but we want to login
+        // with our own credentials from the main config.client()
+        // object, which are subject to command-line username/ password
+        // overrides.
+
+        busconf.set_username(config.client().username());
+        busconf.set_password(config.client().password());
+
+        let bus = match bus::Bus::new(&busconf) {
             Ok(b) => b,
             Err(e) => panic!("Cannot connect bus: {}", e),
         };
@@ -85,6 +101,10 @@ impl BusWatch {
                         obj["errors"].push(json::from(err)).ok();
                         break;
                     }
+                }
+
+                if let Err(e) = self.bus.set_key_timeout(key, DEFAULT_KEY_EXPIRE_SECS, "NX") {
+                    obj["errors"].push(json::from(e));
                 }
             }
 

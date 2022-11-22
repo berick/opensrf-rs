@@ -3,12 +3,14 @@ use opensrf::SettingsClient;
 use std::collections::HashMap;
 
 //const SERVICE: &str = "opensrf.settings";
-const SERVICE: &str = "open-ils.cstore";
+const SERVICE: &str = "open-ils.pcrud";
 //const SERVICE: &str = "opensrf.rs-public";
 const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {
-    let conf = opensrf::init()?;
+    let mut conf = opensrf::init()?;
+    conf.client_mut().set_domain("public.localhost");
+
     let conf = conf.into_shared();
 
     let mut client = Client::connect(conf.clone())?;
