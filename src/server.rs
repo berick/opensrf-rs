@@ -238,12 +238,8 @@ impl Server {
         for domain in self.hosting_domains().iter() {
             log::info!("server: registering with router at {domain}");
 
-            self.client.send_router_command(
-                domain,
-                "register",
-                Some(self.service()),
-                false,
-            )?;
+            self.client
+                .send_router_command(domain, "register", Some(self.service()), false)?;
         }
 
         Ok(())
@@ -253,12 +249,8 @@ impl Server {
         for domain in self.hosting_domains().iter() {
             log::info!("server: un-registering with router at {domain}");
 
-            self.client.send_router_command(
-                domain,
-                "unregister",
-                Some(self.service()),
-                false,
-            )?;
+            self.client
+                .send_router_command(domain, "unregister", Some(self.service()), false)?;
         }
         Ok(())
     }

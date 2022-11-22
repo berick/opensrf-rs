@@ -1,4 +1,5 @@
 use chrono::prelude::{DateTime, Local};
+use getopts;
 use log::{debug, error, info, trace, warn};
 use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use opensrf::bus::Bus;
@@ -6,9 +7,8 @@ use opensrf::conf;
 use opensrf::logging::Logger;
 use opensrf::message;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
-use std::thread;
 use std::sync::Arc;
-use getopts;
+use std::thread;
 
 /// A service controller.
 ///
@@ -201,10 +201,7 @@ impl Routerdomain {
         let bus = match &mut self.bus {
             Some(b) => b,
             None => {
-                return Err(format!(
-                    "We have no connection to domain {}",
-                    self.domain()
-                ));
+                return Err(format!("We have no connection to domain {}", self.domain()));
             }
         };
 
@@ -226,7 +223,6 @@ struct Router {
 
 impl Router {
     pub fn new(config: Arc<conf::Config>, domain: &str) -> Self {
-
         log::info!("Starting router on domain: {domain}");
 
         let busconf = match config.get_router_conf(domain) {
@@ -275,10 +271,7 @@ impl Router {
             return Ok(&mut self.primary_domain);
         }
 
-        let mut pos_op = self
-            .remote_domains
-            .iter()
-            .position(|d| d.domain.eq(domain));
+        let mut pos_op = self.remote_domains.iter().position(|d| d.domain.eq(domain));
 
         if pos_op.is_none() {
             debug!("Adding new Routerdomain for domain={}", domain);
@@ -332,10 +325,7 @@ impl Router {
         }
 
         if let Some(pos) = rem_pos_op {
-            debug!(
-                "Removing cleared domain entry for domain={}",
-                domain
-            );
+            debug!("Removing cleared domain entry for domain={}", domain);
             self.remote_domains.remove(pos);
         }
 
@@ -522,16 +512,17 @@ impl Router {
 
     /// Some Router requests are packaged as method calls.  Handle those here.
     fn handle_router_api_request(&mut self, tm: TransportMessage) -> Result<(), String> {
-
         let from = tm.from();
 
         for msg in tm.body().iter() {
-
             let method = match msg.payload() {
                 Payload::Method(m) => m,
-                _ => return Err(format!(
-                    "Router cannot process message: {}", tm.to_json_value().dump()
-                ))
+                _ => {
+                    return Err(format!(
+                        "Router cannot process message: {}",
+                        tm.to_json_value().dump()
+                    ))
+                }
             };
 
             let value = self.process_router_api_request(&method)?;
@@ -552,24 +543,17 @@ impl Router {
                 None => return Err(format!("Primary domain has no bus!")),
             };
 
-            let mut tmsg = TransportMessage::with_body(
-                from,
-                myaddr.full(),
-                tm.thread(),
-                reply,
-            );
+            let mut tmsg = TransportMessage::with_body(from, myaddr.full(), tm.thread(), reply);
 
-            tmsg.body_as_mut().push(
-                Message::new(
-                    MessageType::Status,
-                    msg.thread_trace(),
-                    Payload::Status(message::Status::new(
-                        MessageStatus::Complete,
-                        "Request Complete",
-                        "osrfStatus",
-                    ))
-                )
-            );
+            tmsg.body_as_mut().push(Message::new(
+                MessageType::Status,
+                msg.thread_trace(),
+                Payload::Status(message::Status::new(
+                    MessageStatus::Complete,
+                    "Request Complete",
+                    "osrfStatus",
+                )),
+            ));
 
             self.primary_domain.send_to_domain(tmsg)?;
         }
@@ -577,21 +561,24 @@ impl Router {
         Ok(())
     }
 
-    fn process_router_api_request(&mut self, m: &message::Method) -> Result<json::JsonValue, String> {
-
+    fn process_router_api_request(
+        &mut self,
+        m: &message::Method,
+    ) -> Result<json::JsonValue, String> {
         match m.method() {
-
             "opensrf.router.info.class.list" => {
                 // Caller wants a list of service names
 
-                let names: Vec<String> = self.primary_domain.services()
+                let names: Vec<String> = self
+                    .primary_domain
+                    .services()
                     .iter()
                     .map(|s| s.name().to_string())
                     .collect();
 
                 Ok(json::from(names))
             }
-            _ => Err(format!("Router cannot handle api {}", m.method()))
+            _ => Err(format!("Router cannot handle api {}", m.method())),
         }
     }
 
@@ -687,18 +674,20 @@ fn main() {
 
     ops.optmulti("d", "domain", "Domain", "DOMAIN");
 
-    let (config, params) = opensrf::init_with_more_options(
-        &mut ops,
-        opensrf::InitOptions { skip_logging: true }
-    ).unwrap();
+    let (config, params) =
+        opensrf::init_with_more_options(&mut ops, opensrf::InitOptions { skip_logging: true })
+            .unwrap();
 
     let config = config.into_shared();
 
     let mut domains = params.opt_strs("domain");
 
     if domains.len() == 0 {
-        domains = config.routers()
-            .iter().map(|r| r.client().domain().name().to_string()).collect();
+        domains = config
+            .routers()
+            .iter()
+            .map(|r| r.client().domain().name().to_string())
+            .collect();
 
         if domains.len() == 0 {
             panic!("Router requries at least one domain");

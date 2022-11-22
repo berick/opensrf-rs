@@ -1,9 +1,9 @@
 use gethostname::gethostname;
+use roxmltree;
 use std::fs;
 use std::str::FromStr;
 use std::sync::Arc;
 use syslog;
-use roxmltree;
 
 const DEFAULT_BUS_PORT: u16 = 6379;
 
@@ -48,7 +48,7 @@ impl LogOptions {
             "3" => log::LevelFilter::Info,
             "4" => log::LevelFilter::Debug,
             "5" => log::LevelFilter::Trace,
-            _   => log::LevelFilter::Info
+            _ => log::LevelFilter::Info,
         }
     }
 }
@@ -148,9 +148,7 @@ pub struct ConfigBuilder {
 }
 
 impl ConfigBuilder {
-
     pub fn build(self) -> Result<Config, String> {
-
         if self.client.is_none() {
             return Err(format!("Config has no client settings"));
         }
@@ -179,17 +177,19 @@ impl ConfigBuilder {
     }
 
     pub fn from_xml_string(xml: &str) -> Result<Self, String> {
-
         let doc = match roxmltree::Document::parse(xml) {
             Ok(d) => d,
-            Err(e) => Err(format!("Error parsing XML: {e}"))?
+            Err(e) => Err(format!("Error parsing XML: {e}"))?,
         };
 
-        let conf_node = match doc.root()
+        let conf_node = match doc
+            .root()
             .children()
-            .filter(|n| n.has_tag_name("config")).next() {
+            .filter(|n| n.has_tag_name("config"))
+            .next()
+        {
             Some(n) => n,
-            None => Err(format!("Missing 'config' element"))?
+            None => Err(format!("Missing 'config' element"))?,
         };
 
         let mut builder = ConfigBuilder {
@@ -220,8 +220,11 @@ impl ConfigBuilder {
     }
 
     fn unpack_shared(&mut self, node: &roxmltree::Node) -> Result<(), String> {
-
-        if let Some(lp) = node.children().filter(|c| c.has_tag_name("log_protect")).next() {
+        if let Some(lp) = node
+            .children()
+            .filter(|c| c.has_tag_name("log_protect"))
+            .next()
+        {
             for ms in lp.children().filter(|c| c.has_tag_name("match_string")) {
                 if let Some(t) = ms.text() {
                     self.log_protect.push(t.to_string());
@@ -234,9 +237,12 @@ impl ConfigBuilder {
 
     fn unpack_routers(&mut self, node: &roxmltree::Node) -> Result<(), String> {
         for rnode in node.children().filter(|n| n.has_tag_name("router")) {
-
             // Router client configs are (mostly) nested in a <transport> element.
-            let tnode = match rnode.children().filter(|c| c.has_tag_name("transport")).next() {
+            let tnode = match rnode
+                .children()
+                .filter(|c| c.has_tag_name("transport"))
+                .next()
+            {
                 Some(tn) => tn,
                 None => Err(format!("Routers require a transport config"))?,
             };
@@ -247,7 +253,7 @@ impl ConfigBuilder {
             // transport node.
             client.logging = self.unpack_logging_node(&rnode)?;
 
-            let router = Router { client, };
+            let router = Router { client };
 
             self.routers.push(router);
         }
@@ -267,8 +273,7 @@ impl ConfigBuilder {
     fn unpack_opensrf_node(&mut self, node: &roxmltree::Node) -> Result<(), String> {
         let mut client = self.unpack_client_node(node)?;
 
-        if let Some(routers) =
-            node.children().filter(|c| c.has_tag_name("routers")).next() {
+        if let Some(routers) = node.children().filter(|c| c.has_tag_name("routers")).next() {
             for rnode in routers.children().filter(|r| r.has_tag_name("router")) {
                 self.unpack_client_router_node(&mut client, &rnode)?;
             }
@@ -279,9 +284,11 @@ impl ConfigBuilder {
         Ok(())
     }
 
-    fn unpack_client_router_node(&mut self,
-        client: &mut BusClient, rnode: &roxmltree::Node) -> Result<(), String> {
-
+    fn unpack_client_router_node(
+        &mut self,
+        client: &mut BusClient,
+        rnode: &roxmltree::Node,
+    ) -> Result<(), String> {
         let domain = match self.child_node_text(rnode, "domain") {
             Some(d) => d.to_string(),
             None => Err(format!("Client router node has no domain: {rnode:?}"))?,
@@ -292,9 +299,11 @@ impl ConfigBuilder {
             services: None,
         };
 
-        if let Some(services) =
-            rnode.children().filter(|n| n.has_tag_name("services")).next() {
-
+        if let Some(services) = rnode
+            .children()
+            .filter(|n| n.has_tag_name("services"))
+            .next()
+        {
             let mut svclist = Vec::new();
 
             for snode in services.children().filter(|n| n.has_tag_name("service")) {
@@ -312,7 +321,6 @@ impl ConfigBuilder {
     }
 
     fn unpack_client_node(&mut self, node: &roxmltree::Node) -> Result<BusClient, String> {
-
         let logging = self.unpack_logging_node(node)?;
         let domain = self.unpack_domain_node(node)?;
 
@@ -336,7 +344,7 @@ impl ConfigBuilder {
                     if let Some(t) = child.text() {
                         settings_config = Some(t.to_string());
                     }
-                },
+                }
                 _ => {}
             }
         }
@@ -352,24 +360,22 @@ impl ConfigBuilder {
     }
 
     fn unpack_domain_node(&mut self, node: &roxmltree::Node) -> Result<BusDomain, String> {
-
         let domain_name = match node.children().filter(|c| c.has_tag_name("domain")).next() {
             Some(n) => match n.text() {
                 Some(t) => t,
                 None => Err(format!("'domain' node is empty"))?,
-            }
+            },
             None => match node.children().filter(|c| c.has_tag_name("server")).next() {
                 Some(n) => match n.text() {
                     Some(t) => t,
                     None => Err(format!("'server' node is empty"))?,
                 },
                 None => Err(format!("Node has no domain or server"))?,
-            }
+            },
         };
 
         let mut port = DEFAULT_BUS_PORT;
-        if let Some(pnode) =
-            node.children().filter(|c| c.has_tag_name("port")).next() {
+        if let Some(pnode) = node.children().filter(|c| c.has_tag_name("port")).next() {
             if let Some(ptext) = pnode.text() {
                 if let Ok(p) = ptext.parse::<u16>() {
                     port = p;
@@ -384,7 +390,6 @@ impl ConfigBuilder {
     }
 
     fn unpack_logging_node(&mut self, node: &roxmltree::Node) -> Result<LogOptions, String> {
-
         let mut ops = LogOptions {
             log_level: None,
             log_file: None,
@@ -466,7 +471,10 @@ impl Config {
     }
 
     pub fn get_router_conf(&self, domain: &str) -> Option<&Router> {
-        self.routers.iter().filter(|r| r.client().domain().name().eq(domain)).next()
+        self.routers
+            .iter()
+            .filter(|r| r.client().domain().name().eq(domain))
+            .next()
     }
 
     /// Manually override the OS hostname, e.g. with "localhost"

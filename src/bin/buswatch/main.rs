@@ -1,11 +1,11 @@
-use chrono::{Local, DateTime};
 use chrono::prelude::*;
-use std::sync::Arc;
-use std::time::Duration;
-use std::thread;
+use chrono::{DateTime, Local};
 use getopts;
-use opensrf::conf;
 use opensrf::bus;
+use opensrf::conf;
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 const DEFAULT_WAIT_TIME_MILLIS: u64 = 2000;
 
@@ -27,7 +27,6 @@ struct BusWatch {
 
 impl BusWatch {
     pub fn new(config: Arc<conf::Config>, domain: &str) -> Self {
-
         let mut busconf = match config.get_router_conf(domain) {
             Some(rc) => rc.client().clone(),
             None => panic!("No router config for domain {}", domain),
@@ -53,20 +52,18 @@ impl BusWatch {
             config,
             wait_time,
             start_time: Local::now(),
-            domain: domain.to_string()
+            domain: domain.to_string(),
         }
     }
 
     pub fn watch(&mut self) {
-
-        let mut obj = json::object!{
+        let mut obj = json::object! {
             "domain": json::from(self.domain.as_str()),
             "start_time":
                 json::from(format!("{}", self.start_time.format("%FT%T%z"))),
         };
 
         loop {
-
             thread::sleep(Duration::from_millis(self.wait_time));
 
             // Check all opensrf keys.
@@ -108,8 +105,7 @@ impl BusWatch {
                 }
             }
 
-            obj["current_time"] =
-                json::from(format!("{}", Local::now().format("%FT%T%z")));
+            obj["current_time"] = json::from(format!("{}", Local::now().format("%FT%T%z")));
 
             println!("{}", obj.dump());
         }
@@ -128,8 +124,11 @@ fn main() {
 
     if domains.len() == 0 {
         // Watch all routed domains by default.
-        domains = config.routers()
-            .iter().map(|r| r.client().domain().name().to_string()).collect();
+        domains = config
+            .routers()
+            .iter()
+            .map(|r| r.client().domain().name().to_string())
+            .collect();
         if domains.len() == 0 {
             panic!("Watcher requires at least on domain");
         }

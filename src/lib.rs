@@ -82,13 +82,12 @@ pub fn init_with_more_options(
 
     let params = match opts.parse(&args[1..]) {
         Ok(p) => p,
-        Err(e) => Err(format!("Error parsing options: {e}"))?
+        Err(e) => Err(format!("Error parsing options: {e}"))?,
     };
 
-    let filename = match params.opt_get_default(
-        "osrf-config", DEFAULT_OSRF_CONFIG.to_string()) {
+    let filename = match params.opt_get_default("osrf-config", DEFAULT_OSRF_CONFIG.to_string()) {
         Ok(f) => f,
-        Err(e) => Err(format!("Error reading osrf-config option: {e}"))?
+        Err(e) => Err(format!("Error reading osrf-config option: {e}"))?,
     };
 
     let mut config = conf::ConfigBuilder::from_file(&filename)?.build()?;

@@ -88,7 +88,6 @@ impl Bus {
         mut timeout: i32,
         recipient: Option<&str>,
     ) -> Result<Option<String>, String> {
-
         let recipient = match recipient {
             Some(s) => s.to_string(),
             None => self.address().full().to_string(),
@@ -96,7 +95,8 @@ impl Bus {
 
         let value: String;
 
-        if timeout == 0 { // non-blocking
+        if timeout == 0 {
+            // non-blocking
 
             // LPOP returns a scalar response.
             value = match self.connection().lpop(&recipient, None) {
@@ -106,11 +106,11 @@ impl Bus {
                         // Will read a Nil value on timeout.  That's OK.
                         return Ok(None);
                     }
-                    _ => return Err(format!("recv_one_chunk failed: {e}"))
+                    _ => return Err(format!("recv_one_chunk failed: {e}")),
                 },
             };
-
-        } else { // Blocking
+        } else {
+            // Blocking
 
             // BLPOP returns the name of the popped list and the value.
             if timeout < 0 {
@@ -118,14 +118,13 @@ impl Bus {
                 timeout = 0;
             }
 
-            let resp: Vec<String> =
-                match self.connection().blpop(&recipient, timeout as usize) {
+            let resp: Vec<String> = match self.connection().blpop(&recipient, timeout as usize) {
                 Ok(r) => r,
-                Err(e) => return Err(
-                    format!("Redis list pop error: {e} recipient={recipient}"))
+                Err(e) => return Err(format!("Redis list pop error: {e} recipient={recipient}")),
             };
 
-            if resp.len() == 0 { // No message received
+            if resp.len() == 0 {
+                // No message received
                 return Ok(None);
             }
 
@@ -305,11 +304,9 @@ impl Bus {
         Ok(res.unwrap())
     }
 
-
     /// Set the expire time on the specified key to 'timeout' seconds from now.
     pub fn set_key_timeout(&mut self, key: &str, timeout: u64, flag: &str) -> Result<i32, String> {
-        let res: Result<Vec<i32>, _> =
-            redis::pipe()
+        let res: Result<Vec<i32>, _> = redis::pipe()
             .cmd("EXPIRE")
             .arg(key)
             .arg(timeout)
@@ -328,7 +325,6 @@ impl Bus {
             Ok(0)
         }
     }
-
 }
 
 impl fmt::Display for Bus {
