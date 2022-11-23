@@ -12,7 +12,7 @@ impl SettingsClient {
     ///
     /// If force is set, it is passed to opensrf.settings to override
     /// any caching.
-    pub fn get_host_settings(client: &mut Client, force: bool) -> Result<HostSettings, String> {
+    pub fn get_host_settings(client: &Client, force: bool) -> Result<HostSettings, String> {
         let mut ses = client.session("opensrf.settings");
 
         let mut req = ses.request(
