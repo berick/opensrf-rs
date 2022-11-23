@@ -1,11 +1,11 @@
-use chrono::prelude::{DateTime, Local};
 use getopts;
-use log::{debug, error, info, trace, warn};
+use chrono::prelude::{DateTime, Local};
 use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use opensrf::bus::Bus;
 use opensrf::conf;
 use opensrf::logging::Logger;
 use opensrf::message;
+use opensrf::init;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
 use std::sync::Arc;
 use std::thread;
@@ -61,13 +61,13 @@ impl ServiceEntry {
             .iter()
             .position(|c| c.address().full().eq(address.full()))
         {
-            debug!(
+            log::debug!(
                 "Removing controller for service={} address={}",
                 self.name, address
             );
             self.controllers.remove(pos);
         } else {
-            debug!(
+            log::debug!(
                 "Cannot remove unknown controller service={} address={}",
                 self.name, address
             );
@@ -152,7 +152,7 @@ impl Routerdomain {
             svc.remove_controller(address);
 
             if svc.controllers.len() == 0 {
-                debug!(
+                log::debug!(
                     "Removing registration for service={} on removal of last controller address={}",
                     service, address
                 );
@@ -274,7 +274,7 @@ impl Router {
         let mut pos_op = self.remote_domains.iter().position(|d| d.domain.eq(domain));
 
         if pos_op.is_none() {
-            debug!("Adding new Routerdomain for domain={}", domain);
+            log::debug!("Adding new Routerdomain for domain={}", domain);
 
             // Primary connection is required at this point.
             let mut busconf = self.config.client().clone();
@@ -292,7 +292,7 @@ impl Router {
     fn handle_unregister(&mut self, address: &ClientAddress, service: &str) -> Result<(), String> {
         let domain = address.domain();
 
-        info!(
+        log::info!(
             "De-registering domain={} service={} address={}",
             domain, service, address
         );
@@ -325,7 +325,7 @@ impl Router {
         }
 
         if let Some(pos) = rem_pos_op {
-            debug!("Removing cleared domain entry for domain={}", domain);
+            log::debug!("Removing cleared domain entry for domain={}", domain);
             self.remote_domains.remove(pos);
         }
 
@@ -343,7 +343,7 @@ impl Router {
             if svc.name.eq(service) {
                 for controller in &mut svc.controllers {
                     if controller.address.full().eq(address.full()) {
-                        warn!(
+                        log::warn!(
                             "Controller with address {} already registered for service {} and domain {}",
                             address, service, domain
                         );
@@ -351,7 +351,7 @@ impl Router {
                     }
                 }
 
-                debug!(
+                log::debug!(
                     "Adding new ServiceInstance domain={} service={} address={}",
                     domain, service, address
                 );
@@ -368,7 +368,7 @@ impl Router {
         // We have no Service Entry for this domain+service+address.
         // Add a ServiceEntry and a new ServiceInstance
 
-        debug!(
+        log::debug!(
             "Adding new ServiceEntry domain={} service={} address={}",
             domain, service, address
         );
@@ -413,13 +413,13 @@ impl Router {
                 Ok(m) => m,
                 Err(s) => {
                     eprintln!("Router exiting on failed recv(): {s}");
-                    error!("Exiting. Error receiving data from primary connection: {s}");
+                    log::error!("Exiting. Error receiving data from primary connection: {s}");
                     return;
                 }
             };
 
             if let Err(s) = self.route_message(tm) {
-                error!("Error routing message: {}", s);
+                log::error!("Error routing message: {}", s);
             }
         }
     }
@@ -427,7 +427,7 @@ impl Router {
     fn route_message(&mut self, tm: TransportMessage) -> Result<(), String> {
         let to = tm.to();
 
-        debug!(
+        log::debug!(
             "Router at {} received message destined for {to}",
             self.primary_domain.domain()
         );
@@ -473,7 +473,7 @@ impl Router {
             }
         }
 
-        error!(
+        log::error!(
             "Router at {} has no service controllers for service {service}",
             self.primary_domain.domain()
         );
@@ -597,7 +597,7 @@ impl Router {
 
         let from_addr = ClientAddress::from_string(from)?;
 
-        debug!(
+        log::debug!(
             "Router command received command={} from={}",
             router_command, from
         );
@@ -628,7 +628,7 @@ impl Router {
         mut tm: TransportMessage,
     ) -> Result<(), String> {
         let router_command = tm.router_command().unwrap(); // known exists
-        debug!("Handling info router command : {router_command}");
+        log::debug!("Handling info router command : {router_command}");
 
         match router_command {
             "summarize" => tm.set_router_reply(&self.to_json_value().dump()),
@@ -675,7 +675,7 @@ fn main() {
     ops.optmulti("d", "domain", "Domain", "DOMAIN");
 
     let (config, params) =
-        opensrf::init_with_more_options(&mut ops, &opensrf::InitOptions { skip_logging: true })
+        init::init_with_more_options(&mut ops, &init::InitOptions { skip_logging: true })
             .unwrap();
 
     let config = config.into_shared();

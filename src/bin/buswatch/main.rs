@@ -1,4 +1,3 @@
-use chrono::prelude::*;
 use chrono::{DateTime, Local};
 use getopts;
 use opensrf::bus;
@@ -18,7 +17,6 @@ const DEFAULT_WAIT_TIME_MILLIS: u64 = 2000;
 const DEFAULT_KEY_EXPIRE_SECS: u64 = 1800; // 30 minutes
 
 struct BusWatch {
-    config: Arc<conf::Config>,
     domain: String,
     bus: bus::Bus,
     wait_time: u64,
@@ -49,7 +47,6 @@ impl BusWatch {
 
         BusWatch {
             bus,
-            config,
             wait_time,
             start_time: Local::now(),
             domain: domain.to_string(),
@@ -101,7 +98,7 @@ impl BusWatch {
                 }
 
                 if let Err(e) = self.bus.set_key_timeout(key, DEFAULT_KEY_EXPIRE_SECS, "NX") {
-                    obj["errors"].push(json::from(e));
+                    obj["errors"].push(json::from(e)).ok();
                 }
             }
 
@@ -117,7 +114,7 @@ fn main() {
 
     ops.optmulti("d", "domain", "Domain", "DOMAIN");
 
-    let (config, params) = opensrf::init_with_options(&mut ops).unwrap();
+    let (config, params) = opensrf::init::init_with_options(&mut ops).unwrap();
     let config = config.into_shared();
 
     let mut domains = params.opt_strs("domain");

@@ -6,6 +6,7 @@ use super::method;
 use super::sclient::{HostSettings, SettingsClient};
 use super::session;
 use super::worker::{Worker, WorkerState, WorkerStateEvent};
+use super::init;
 use signal_hook;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -46,7 +47,7 @@ impl Server {
     pub fn start(application: Box<dyn app::Application>) -> Result<(), String> {
         let service = application.name();
 
-        let config = match super::init() {
+        let config = match init::init() {
             Ok(c) => c,
             Err(e) => panic!("Cannot start server for {}: {}", service, e),
         };
