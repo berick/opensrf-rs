@@ -40,8 +40,8 @@ impl InitOptions {
 
 const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.xml";
 
-/// Read common command line parameters, parse the core config, apply
-/// the primary connection type, and setup logging.
+/// Read common command line parameters, parse the core config,
+/// setup logging.
 ///
 /// This does not connect to the bus.
 pub fn init() -> Result<conf::Config, String> {
@@ -52,7 +52,7 @@ pub fn init() -> Result<conf::Config, String> {
 pub fn init_with_options(
     opts: &mut getopts::Options,
 ) -> Result<(conf::Config, getopts::Matches), String> {
-    init_with_more_options(opts, InitOptions::new())
+    init_with_more_options(opts, &InitOptions::new())
 }
 
 /// Same as init(), but allows the caller to pass in a prepopulated set
@@ -60,7 +60,7 @@ pub fn init_with_options(
 /// OpenSRF command line options.
 pub fn init_with_more_options(
     opts: &mut getopts::Options,
-    options: InitOptions,
+    options: &InitOptions,
 ) -> Result<(conf::Config, getopts::Matches), String> {
     let args: Vec<String> = env::args().collect();
 

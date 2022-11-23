@@ -675,7 +675,7 @@ fn main() {
     ops.optmulti("d", "domain", "Domain", "DOMAIN");
 
     let (config, params) =
-        opensrf::init_with_more_options(&mut ops, opensrf::InitOptions { skip_logging: true })
+        opensrf::init_with_more_options(&mut ops, &opensrf::InitOptions { skip_logging: true })
             .unwrap();
 
     let config = config.into_shared();
