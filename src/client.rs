@@ -270,13 +270,13 @@ impl Client {
     }
 
     /// Create a new client session for the requested service.
-    pub fn session(&mut self, service: &str) -> SessionHandle {
+    pub fn session(&self, service: &str) -> SessionHandle {
         SessionHandle::new(self.clone(), service)
     }
 
     /// Discard any unprocessed messages from our backlog and clear our
     /// stream of pending messages on the bus.
-    pub fn clear(&mut self) -> Result<(), String> {
+    pub fn clear(&self) -> Result<(), String> {
         self.singleton().borrow_mut().clear_backlog();
         self.singleton().borrow_mut().bus_mut().clear_stream()
     }
@@ -301,7 +301,7 @@ impl Client {
     ///
     /// Uses the default request timeout DEFAULT_REQUEST_TIMEOUT.
     pub fn sendrecv<T>(
-        &mut self,
+        &self,
         service: &str,
         method: &str,
         params: T,
