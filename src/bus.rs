@@ -30,9 +30,7 @@ impl Bus {
 
         let connection = match client.get_connection() {
             Ok(c) => c,
-            Err(e) => {
-                return Err(format!("Cannot connect: {e}"));
-            }
+            Err(e) => Err(format!("Bus connect error: {e}"))?,
         };
 
         let domain = config.domain().name();
