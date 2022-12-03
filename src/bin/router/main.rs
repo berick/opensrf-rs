@@ -9,6 +9,7 @@ use opensrf::init;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 /// A service controller.
 ///
@@ -404,7 +405,9 @@ impl Router {
         return services;
     }
 
-    fn listen(&mut self) {
+    /// Returns true if the caller should restart the router after exit.
+    /// Return false if this is a clean / intentional exit.
+    fn listen(&mut self) -> bool {
         // Listen for inbound requests / router commands on our primary
         // domain and route accordingly.
 
@@ -412,9 +415,8 @@ impl Router {
             let tm = match self.recv_one() {
                 Ok(m) => m,
                 Err(s) => {
-                    eprintln!("Router exiting on failed recv(): {s}");
                     log::error!("Exiting. Error receiving data from primary connection: {s}");
-                    return;
+                    return true;
                 }
             };
 
@@ -422,6 +424,9 @@ impl Router {
                 log::error!("Error routing message: {}", s);
             }
         }
+
+        // This will be reachable once we implement graceful shutdown.
+        return false;
     }
 
     fn route_message(&mut self, tm: TransportMessage) -> Result<(), String> {
@@ -716,9 +721,21 @@ fn main() {
         let domain = domain.clone();
 
         threads.push(thread::spawn(move || {
-            let mut router = Router::new(conf, &domain);
-            router.init().unwrap();
-            router.listen();
+
+            loop {
+                // A router instance will exit if it encounters a
+                // non-recoverable bus error.  This can happen, e.g.,
+                // when resetting the message bus.  Sleep a moment then
+                // try to reconnect.  The sleep has a secondary benefit
+                // of preventing a tsunami of repeating error logs.
+                let mut router = Router::new(conf.clone(), &domain);
+                router.init().unwrap();
+
+                if router.listen() {
+                    log::warn!("Router waiting then restarting after bus disconnect");
+                    thread::sleep(Duration::from_secs(3));
+                }
+            }
         }));
     }
 
