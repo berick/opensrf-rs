@@ -1,12 +1,12 @@
 use super::app;
 use super::client::Client;
 use super::conf;
+use super::init;
 use super::message;
 use super::method;
 use super::sclient::{HostSettings, SettingsClient};
 use super::session;
 use super::worker::{Worker, WorkerState, WorkerStateEvent};
-use super::init;
 use signal_hook;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};

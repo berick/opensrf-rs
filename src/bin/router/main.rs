@@ -1,11 +1,11 @@
-use getopts;
 use chrono::prelude::{DateTime, Local};
+use getopts;
 use opensrf::addr::{BusAddress, ClientAddress, RouterAddress, ServiceAddress};
 use opensrf::bus::Bus;
 use opensrf::conf;
+use opensrf::init;
 use opensrf::logging::Logger;
 use opensrf::message;
-use opensrf::init;
 use opensrf::message::{Message, MessageStatus, MessageType, Payload, Status, TransportMessage};
 use std::sync::Arc;
 use std::thread;
@@ -64,13 +64,15 @@ impl ServiceEntry {
         {
             log::debug!(
                 "Removing controller for service={} address={}",
-                self.name, address
+                self.name,
+                address
             );
             self.controllers.remove(pos);
         } else {
             log::debug!(
                 "Cannot remove unknown controller service={} address={}",
-                self.name, address
+                self.name,
+                address
             );
         }
     }
@@ -155,7 +157,8 @@ impl Routerdomain {
             if svc.controllers.len() == 0 {
                 log::debug!(
                     "Removing registration for service={} on removal of last controller address={}",
-                    service, address
+                    service,
+                    address
                 );
 
                 if let Some(s_pos) = self.services.iter().position(|s| s.name().eq(service)) {
@@ -295,7 +298,9 @@ impl Router {
 
         log::info!(
             "De-registering domain={} service={} address={}",
-            domain, service, address
+            domain,
+            service,
+            address
         );
 
         if self.primary_domain.domain.eq(domain) {
@@ -354,7 +359,9 @@ impl Router {
 
                 log::debug!(
                     "Adding new ServiceInstance domain={} service={} address={}",
-                    domain, service, address
+                    domain,
+                    service,
+                    address
                 );
 
                 svc.controllers.push(ServiceInstance {
@@ -371,7 +378,9 @@ impl Router {
 
         log::debug!(
             "Adding new ServiceEntry domain={} service={} address={}",
-            domain, service, address
+            domain,
+            service,
+            address
         );
 
         r_domain.services.push(ServiceEntry {
@@ -426,7 +435,7 @@ impl Router {
         }
 
         // This will be reachable once we implement graceful shutdown.
-        return false;
+        //return false;
     }
 
     fn route_message(&mut self, tm: TransportMessage) -> Result<(), String> {
@@ -604,7 +613,8 @@ impl Router {
 
         log::debug!(
             "Router command received command={} from={}",
-            router_command, from
+            router_command,
+            from
         );
 
         // Not all router commands require a router class.
@@ -679,9 +689,9 @@ fn main() {
 
     ops.optmulti("d", "domain", "Domain", "DOMAIN");
 
-    let (config, params) =
-        init::init_with_more_options(&mut ops, &init::InitOptions { skip_logging: true })
-            .unwrap();
+    let initops = init::InitOptions { skip_logging: true };
+
+    let (config, params) = init::init_with_more_options(&mut ops, &initops).unwrap();
 
     let config = config.into_shared();
 
@@ -717,30 +727,36 @@ fn main() {
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
     for domain in domains.iter() {
-        let conf = config.clone();
-        let domain = domain.clone();
-
-        threads.push(thread::spawn(move || {
-
-            loop {
-                // A router instance will exit if it encounters a
-                // non-recoverable bus error.  This can happen, e.g.,
-                // when resetting the message bus.  Sleep a moment then
-                // try to reconnect.  The sleep has a secondary benefit
-                // of preventing a tsunami of repeating error logs.
-                let mut router = Router::new(conf.clone(), &domain);
-                router.init().unwrap();
-
-                if router.listen() {
-                    log::warn!("Router waiting then restarting after bus disconnect");
-                    thread::sleep(Duration::from_secs(3));
-                }
-            }
-        }));
+        threads.push(start_one_domain(config.clone(), domain.to_string()));
     }
 
     // Block here while the routers are running.
     for thread in threads {
         thread.join().ok();
     }
+}
+
+fn start_one_domain(conf: Arc<conf::Config>, domain: String) -> thread::JoinHandle<()> {
+    return thread::spawn(move || {
+        loop {
+            // A router instance will exit if it encounters a
+            // non-recoverable bus error.  This can happen, e.g., when
+            // resetting the message bus.  Sleep a moment then try
+            // to reconnect.  The sleep has a secondary benefit of
+            // preventing a flood of repeating error logs.
+
+            let mut router = Router::new(conf.clone(), &domain);
+
+            // If init() fails, we're done for.  Let it panic.
+            router.init().unwrap();
+
+            if router.listen() {
+                log::warn!("Router waiting then restarting after bus disconnect");
+                thread::sleep(Duration::from_secs(3));
+            } else {
+                log::info!("Router exiting");
+                break;
+            }
+        }
+    });
 }

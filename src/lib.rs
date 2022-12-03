@@ -10,6 +10,7 @@ pub mod bus;
 pub mod classified;
 pub mod client;
 pub mod conf;
+pub mod init;
 pub mod logging;
 pub mod message;
 pub mod method;
@@ -19,7 +20,6 @@ pub mod server;
 pub mod session;
 pub mod util;
 pub mod worker;
-pub mod init;
 
 #[cfg(test)]
 mod tests;

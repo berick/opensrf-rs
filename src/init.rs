@@ -1,7 +1,7 @@
+use super::conf;
+use super::logging;
 use getopts;
 use std::env;
-use super::logging;
-use super::conf;
 
 const DEFAULT_OSRF_CONFIG: &str = "/openils/conf/opensrf_core.xml";
 

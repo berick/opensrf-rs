@@ -53,7 +53,10 @@ impl BusWatch {
         }
     }
 
-    pub fn watch(&mut self) {
+    /// Returns true if the caller should start over with a new
+    /// buswatcher to recover from a potentially temporary bus
+    /// connection error.  False if this is a clean shutdown.
+    pub fn watch(&mut self) -> bool {
         let mut obj = json::object! {
             "domain": json::from(self.domain.as_str()),
         };
@@ -67,7 +70,7 @@ impl BusWatch {
                 Ok(k) => k,
                 Err(e) => {
                     log::error!("Error in keys() command: {e}");
-                    continue;
+                    return true;
                 }
             };
 
@@ -76,7 +79,6 @@ impl BusWatch {
             }
 
             obj["stats"] = json::JsonValue::new_object();
-            obj["errors"] = json::JsonValue::new_array();
 
             for key in keys.iter() {
                 match self.bus.llen(key) {
@@ -90,13 +92,13 @@ impl BusWatch {
                     Err(e) => {
                         let err = format!("Error reading LLEN list={key} error={e}");
                         log::error!("{err}");
-                        obj["errors"].push(json::from(err)).ok();
-                        break;
+                        return true;
                     }
                 }
 
                 if let Err(e) = self.bus.set_key_timeout(key, DEFAULT_KEY_EXPIRE_SECS, "NX") {
-                    obj["errors"].push(json::from(e)).ok();
+                    log::error!("Error with set_key_timeout: {e}");
+                    return true;
                 }
             }
 
@@ -138,9 +140,13 @@ fn main() {
         let conf = config.clone();
         let domain = domain.clone();
 
-        threads.push(thread::spawn(move || {
-            let mut watcher = BusWatch::new(conf, &domain);
-            watcher.watch();
+        threads.push(thread::spawn(move || loop {
+            let mut watcher = BusWatch::new(conf.clone(), &domain);
+            if watcher.watch() {
+                log::error!("Restarting watcher after exit-on-error");
+            } else {
+                break;
+            }
         }));
     }
 

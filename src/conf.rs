@@ -177,9 +177,8 @@ impl ConfigBuilder {
     }
 
     pub fn from_xml_string(xml: &str) -> Result<Self, String> {
-
-        let doc = roxmltree::Document::parse(xml)
-            .or_else(|e| Err(format!("Error parsing XML: {e}")))?;
+        let doc =
+            roxmltree::Document::parse(xml).or_else(|e| Err(format!("Error parsing XML: {e}")))?;
 
         let conf_node = match doc
             .root()
