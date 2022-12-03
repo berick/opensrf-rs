@@ -56,8 +56,6 @@ impl BusWatch {
     pub fn watch(&mut self) {
         let mut obj = json::object! {
             "domain": json::from(self.domain.as_str()),
-            "start_time":
-                json::from(format!("{}", self.start_time.format("%FT%T%z"))),
         };
 
         loop {
@@ -102,7 +100,7 @@ impl BusWatch {
                 }
             }
 
-            obj["current_time"] = json::from(format!("{}", Local::now().format("%FT%T%z")));
+            obj["time"] = json::from(format!("{}", Local::now().format("%FT%T%z")));
 
             println!("{}", obj.dump());
         }
