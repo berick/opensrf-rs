@@ -20,7 +20,7 @@ struct BusWatch {
     domain: String,
     bus: bus::Bus,
     wait_time: u64,
-    start_time: DateTime<Local>,
+    _start_time: DateTime<Local>,
 }
 
 impl BusWatch {
@@ -48,7 +48,7 @@ impl BusWatch {
         BusWatch {
             bus,
             wait_time,
-            start_time: Local::now(),
+            _start_time: Local::now(),
             domain: domain.to_string(),
         }
     }
