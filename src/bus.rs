@@ -303,25 +303,15 @@ impl Bus {
     }
 
     /// Set the expire time on the specified key to 'timeout' seconds from now.
-    pub fn set_key_timeout(&mut self, key: &str, timeout: u64, flag: &str) -> Result<i32, String> {
-        let res: Result<Vec<i32>, _> = redis::pipe()
-            .cmd("EXPIRE")
-            .arg(key)
-            .arg(timeout)
-            .arg(flag)
-            .query(self.connection());
+    pub fn set_key_timeout(&mut self, key: &str, timeout: u64) -> Result<i32, String> {
+        let res: Result<i32, _> = self.connection().expire(key, timeout as usize);
 
         if let Err(ref e) = res {
             Err(format!("Error in set_key_timeout(): {e}"))?;
         }
 
-        let arr = res.unwrap();
-
-        if arr.len() > 0 {
-            Ok(arr[0])
-        } else {
-            Ok(0)
-        }
+        let val = res.unwrap();
+        Ok(val)
     }
 }
 
