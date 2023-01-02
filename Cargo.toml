@@ -21,6 +21,9 @@ getopts = "0.2.21"
 name = "router"
 
 [[bin]]
+name = "websocketd-translator"
+
+[[bin]]
 name = "buswatch"
 
 [[example]]

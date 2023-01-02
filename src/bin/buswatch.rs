@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-const DEFAULT_WAIT_TIME_MILLIS: u64 = 2000;
+const DEFAULT_WAIT_TIME_MILLIS: u64 = 5000;
 
 // Redis lists are deleted every time the last value in the list is
 // popped.  If a list key persists for many minutes, it means the list

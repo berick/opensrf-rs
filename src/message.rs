@@ -200,6 +200,12 @@ impl TransportMessage {
         tm
     }
 
+    pub fn with_body_vec(to: &str, from: &str, thread: &str, msgs: Vec<Message>) -> Self {
+        let mut tm = TransportMessage::new(to, from, thread);
+        tm.body = msgs;
+        tm
+    }
+
     pub fn to(&self) -> &str {
         &self.to
     }

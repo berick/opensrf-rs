@@ -69,6 +69,10 @@ impl Bus {
         &self.address
     }
 
+    pub fn set_address(&mut self, addr: &ClientAddress) {
+        self.address = addr.clone();
+    }
+
     pub fn domain(&self) -> &str {
         &self.domain
     }
