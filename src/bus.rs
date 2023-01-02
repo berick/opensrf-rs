@@ -307,6 +307,8 @@ impl Bus {
     }
 
     /// Set the expire time on the specified key to 'timeout' seconds from now.
+    /// Uses manual approach so we can pass the flag.  Otherwise, the
+    /// expire time is set to the new value with every call on a given key.
     pub fn set_key_timeout(&mut self, key: &str, timeout: u64, flag: &str) -> Result<i32, String> {
         let res: Result<Vec<i32>, _> = redis::pipe()
             .cmd("EXPIRE")
