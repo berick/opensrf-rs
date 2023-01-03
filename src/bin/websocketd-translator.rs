@@ -1,4 +1,5 @@
 use std::io;
+use std::io::Write;
 use std::thread;
 use std::time::Duration;
 use std::sync::Arc;
@@ -303,17 +304,14 @@ impl OutboundThread {
             log::debug!("OutboundThread waiting for OpenSRF Responses");
 
             match bus.recv(-1, Some(sent_to)) {
-                Ok(msg_op) => match {
-                },
+                Ok(msg_op) => match msg_op {
+                    Some(tm) => self.relay_osrf_to_stdout(&mut bus, &tm)?,
+                    None => { continue; }
+                }
                 Err(e) => {
                     // transport_error -- can we get the thread? TODO
-                    self.write_stdout(tm.thread(), json::JsonValue::new_array(), true)?;
+                    self.write_stdout("", json::JsonValue::new_array(), true)?;
                 }
-            }
-
-            // Exits on opensrf read error
-            if let Some(tm) = bus.recv(-1, Some(sent_to))? {
-                self.relay_osrf_to_stdout(&mut bus, &tm)?;
             }
         }
     }
@@ -344,7 +342,7 @@ impl OutboundThread {
             body.push(msg.to_json_value());
         }
 
-        self.write_stdout(tm.thread(), body)
+        self.write_stdout(tm.thread(), body, false)
     }
 
     fn write_stdout(&self, thread: &str,
@@ -360,7 +358,7 @@ impl OutboundThread {
             obj["transport_error"] = json::from(true);
         }
 
-        if let Err(e) = io.stdout().write_all(obj.dump().bytes()) {
+        if let Err(e) = io::stdout().write_all(obj.dump().as_bytes()) {
             Err(format!("Error writing to STDOUT: {e}"))?;
         }
 

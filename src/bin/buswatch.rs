@@ -65,7 +65,6 @@ impl BusWatch {
             thread::sleep(Duration::from_millis(self.wait_time));
 
             // Check all opensrf keys.
-            // NOTE could break these up into router, service, and client keys.
             let keys = match self.bus.keys("opensrf:*") {
                 Ok(k) => k,
                 Err(e) => {
@@ -87,6 +86,11 @@ impl BusWatch {
                         // time we called keys() and llen().
                         if l > 0 {
                             obj["stats"][key] = json::from(l);
+                            if let Ok(list) = self.bus.lrange(key, 0, 1) {
+                                if let Some(s) = list.get(0) {
+                                    obj["last_value"] = json::from(s.as_str());
+                                }
+                            }
                         }
                     }
                     Err(e) => {
