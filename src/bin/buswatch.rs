@@ -100,9 +100,18 @@ impl BusWatch {
                     }
                 }
 
-                if let Err(e) = self.bus.set_key_timeout(key, DEFAULT_KEY_EXPIRE_SECS) {
-                    log::error!("Error with set_key_timeout: {e}");
-                    return true;
+                match self.bus.ttl(key) {
+                    Ok(ttl) => {
+                        if ttl > -1 {
+                            if let Err(e) = self.bus.set_key_timeout(key, DEFAULT_KEY_EXPIRE_SECS) {
+                                log::error!("Error with set_key_timeout: {e}");
+                                return true;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Error with ttl: {e}");
+                    }
                 }
             }
 
