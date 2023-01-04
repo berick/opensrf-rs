@@ -100,7 +100,7 @@ impl BusWatch {
                     }
                 }
 
-                if let Err(e) = self.bus.set_key_timeout(key, DEFAULT_KEY_EXPIRE_SECS, "NX") {
+                if let Err(e) = self.bus.set_key_timeout(key, DEFAULT_KEY_EXPIRE_SECS) {
                     log::error!("Error with set_key_timeout: {e}");
                     return true;
                 }
