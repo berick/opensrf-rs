@@ -8,7 +8,7 @@ const SERVICE: &str = "open-ils.pcrud";
 const METHOD: &str = "opensrf.system.echo";
 
 fn main() -> Result<(), String> {
-    let mut conf = opensrf::init()?;
+    let mut conf = opensrf::init::init()?;
     conf.client_mut().set_domain("public.localhost");
 
     let conf = conf.into_shared();
