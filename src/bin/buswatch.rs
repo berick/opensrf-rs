@@ -11,8 +11,8 @@ const DEFAULT_WAIT_TIME_MILLIS: u64 = 5000;
 // Redis lists are deleted every time the last value in the list is
 // popped.  If a list key persists for many minutes, it means the list
 // is never fully drained, suggesting the backend responsible for
-// popping values from the list is not longer alive OR is perpetually
-// under extremely heavy load.  Tell keys to delete themselves after
+// popping values from the list is no longer alive OR is perpetually
+// under excessive load.  Tell keys to delete themselves after
 // this many seconds of being unable to drain the list.
 const DEFAULT_KEY_EXPIRE_SECS: u64 = 1800; // 30 minutes
 
@@ -20,6 +20,7 @@ struct BusWatch {
     domain: String,
     bus: bus::Bus,
     wait_time: u64,
+    ttl: u64,
     _start_time: DateTime<Local>,
 }
 
@@ -48,6 +49,7 @@ impl BusWatch {
         BusWatch {
             bus,
             wait_time,
+            ttl: DEFAULT_KEY_EXPIRE_SECS,
             _start_time: Local::now(),
             domain: domain.to_string(),
         }
@@ -85,12 +87,16 @@ impl BusWatch {
                         // The list may have cleared in the time between the
                         // time we called keys() and llen().
                         if l > 0 {
-                            obj["stats"][key] = json::from(l);
+                            obj["stats"][key]["count"] = json::from(l);
+                            /*
+                            // Uncomment this chunk to see the next opensrf
+                            // message in the queue for this key as JSON.
                             if let Ok(list) = self.bus.lrange(key, 0, 1) {
                                 if let Some(s) = list.get(0) {
-                                    obj["last_value"] = json::from(s.as_str());
+                                    obj["stats"][key]["next_value"] = json::from(s.as_str());
                                 }
                             }
+                            */
                         }
                     }
                     Err(e) => {
@@ -102,8 +108,10 @@ impl BusWatch {
 
                 match self.bus.ttl(key) {
                     Ok(ttl) => {
-                        if ttl > -1 {
-                            if let Err(e) = self.bus.set_key_timeout(key, DEFAULT_KEY_EXPIRE_SECS) {
+                        obj["stats"][key]["ttl"] = json::from(ttl);
+                        if ttl == -1 {
+                            log::debug!("Setting TTL for stale key {key}");
+                            if let Err(e) = self.bus.set_key_timeout(key, self.ttl) {
                                 log::error!("Error with set_key_timeout: {e}");
                                 return true;
                             }
@@ -126,6 +134,7 @@ fn main() {
     let mut ops = getopts::Options::new();
 
     ops.optmulti("d", "domain", "Domain", "DOMAIN");
+    ops.optopt("", "ttl", "Time to Live", "TTL");
 
     let (config, params) = opensrf::init::init_with_options(&mut ops).unwrap();
     let config = config.into_shared();
@@ -146,6 +155,14 @@ fn main() {
 
     println!("Starting buswatch for domains: {domains:?}");
 
+    let ttl = match params.opt_str("ttl") {
+        Some(t) => match t.parse::<u64>() {
+            Ok(t2) => Some(t2),
+            Err(e) => panic!("Invalid --ttl value: {}", e),
+        },
+        None => None,
+    };
+
     // A watcher for each domain runs within its own thread.
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
 
@@ -155,6 +172,7 @@ fn main() {
 
         threads.push(thread::spawn(move || loop {
             let mut watcher = BusWatch::new(conf.clone(), &domain);
+            if let Some(t) = ttl { watcher.ttl = t; }
             if watcher.watch() {
                 log::error!("Restarting watcher after exit-on-error");
             } else {
