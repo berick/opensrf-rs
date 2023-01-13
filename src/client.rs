@@ -224,6 +224,7 @@ impl fmt::Display for ClientSingleton {
 /// .borrow_mut() directly when performing actions against the client Ref.
 ///
 /// When a new client Ref is needed, clone the Client.
+#[derive(Clone)]
 pub struct Client {
     singleton: Rc<RefCell<ClientSingleton>>,
     address: ClientAddress,
